@@ -36,4 +36,10 @@ public abstract class ElementoSistema {
     }
 
     public abstract int obtenerTamano();
+    
+    @Override
+    public String toString() {
+        return nombre;
+    }
 }
+    
