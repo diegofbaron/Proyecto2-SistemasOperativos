@@ -5,18 +5,16 @@
 package vista;
 
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
-import javax.swing.tree.TreePath;
 import modelo.*;
 
 public class VentanaPrincipal extends JFrame {
     
-    // --- Lógica ---
     private GestorSistemaArchivos gestor;
 
-    // --- Componentes Gráficos ---
     private JTree arbolSistema;
     private JTable tablaAsignacion;
     private JPanel panelDisco;
@@ -33,31 +31,27 @@ public class VentanaPrincipal extends JFrame {
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        // --- 1. Panel Izquierdo: JTree ---
         arbolSistema = new JTree();
         JScrollPane scrollArbol = new JScrollPane(arbolSistema);
         scrollArbol.setPreferredSize(new Dimension(250, 0));
         scrollArbol.setBorder(BorderFactory.createTitledBorder("Estructura de Directorios"));
         add(scrollArbol, BorderLayout.WEST);
 
-        // --- 2. Panel Central: Disco y Tabla ---
         JPanel panelCentral = new JPanel(new GridLayout(2, 1, 10, 10));
         
         panelDisco = new JPanel();
         panelDisco.setBackground(Color.DARK_GRAY);
-        panelDisco.setBorder(BorderFactory.createTitledBorder("Simulación del SD (Bloques)"));
-        panelCentral.add(new JScrollPane(panelDisco));
+        JScrollPane scrollDisco = new JScrollPane(panelDisco);
+        scrollDisco.setBorder(BorderFactory.createTitledBorder("Simulación del SD (Bloques)"));
+        panelCentral.add(scrollDisco);
 
-        String[] columnas = {"Nombre Archivo", "Bloques Asignados", "Primer Bloque"};
-        Object[][] datosVacios = {};
-        tablaAsignacion = new JTable(datosVacios, columnas);
+        tablaAsignacion = new JTable();
         JScrollPane scrollTabla = new JScrollPane(tablaAsignacion);
         scrollTabla.setBorder(BorderFactory.createTitledBorder("Tabla de Asignación"));
         panelCentral.add(scrollTabla);
 
         add(panelCentral, BorderLayout.CENTER);
 
-        // --- 3. Panel Inferior: Controles ---
         JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 10));
         
         comboModoUsuario = new JComboBox<>(new String[]{"Modo Administrador", "Modo Usuario"});
@@ -71,65 +65,64 @@ public class VentanaPrincipal extends JFrame {
 
         add(panelControles, BorderLayout.SOUTH);
 
-        // --- 4. EVENTOS DE LOS BOTONES ---
         btnCrear.addActionListener(e -> accionCrearElemento());
 
         actualizarArbol();
+        actualizarDisco();
+        actualizarTabla();
     }
 
     private void accionCrearElemento() {
-        // Verificar que estemos en Modo Administrador
         if (comboModoUsuario.getSelectedIndex() != 0) {
             JOptionPane.showMessageDialog(this, "Solo los administradores pueden crear elementos.", "Acceso Denegado", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        // Obtener la carpeta seleccionada en el JTree
         DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
         if (nodoSeleccionado == null) {
-            JOptionPane.showMessageDialog(this, "Por favor, selecciona un directorio en el árbol donde crear el elemento.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Por favor, selecciona un directorio en el árbol.", "Aviso", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         ElementoSistema elementoPadre = (ElementoSistema) nodoSeleccionado.getUserObject();
         if (!(elementoPadre instanceof Directorio)) {
-            JOptionPane.showMessageDialog(this, "No puedes crear un elemento dentro de un archivo. Selecciona una carpeta.", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "No puedes crear un elemento dentro de un archivo.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
         Directorio directorioPadre = (Directorio) elementoPadre;
 
-        // Preguntar qué quiere crear
         String[] opciones = {"Archivo", "Directorio"};
         int seleccion = JOptionPane.showOptionDialog(this, "¿Qué deseas crear?", "Crear Elemento",
                 JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opciones, opciones[0]);
 
-        if (seleccion == -1) return; // Canceló
+        if (seleccion == -1) return; 
 
         String nombre = JOptionPane.showInputDialog(this, "Nombre del elemento:");
         if (nombre == null || nombre.trim().isEmpty()) return;
 
-        if (seleccion == 0) { // Eligió crear Archivo
-            String tamanoStr = JOptionPane.showInputDialog(this, "Tamaño en bloques (ej. 5):");
+        if (seleccion == 0) { 
+            String tamanoStr = JOptionPane.showInputDialog(this, "Tamaño en bloques:");
             try {
                 int tamano = Integer.parseInt(tamanoStr);
                 if (tamano <= 0) throw new NumberFormatException();
                 
-                // Pedimos al gestor que cree el proceso
                 Proceso p = gestor.solicitarCreacionArchivo(nombre, "admin", directorioPadre, tamano);
-                gestor.ejecutarProceso(p); // Por ahora lo ejecutamos instantáneamente
+                gestor.ejecutarProceso(p); 
                 
             } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "El tamaño debe ser un número entero positivo.", "Error de validación", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "El tamaño debe ser un entero positivo.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
-        } else { // Eligió crear Directorio
+        } else { 
             Directorio nuevoDir = new Directorio(nombre, "admin", directorioPadre);
             directorioPadre.agregarHijo(nuevoDir);
         }
 
-        actualizarArbol(); // Refrescamos la vista
-        expandirTodoElArbol(); // Para que no se cierre la carpeta al actualizar
+        actualizarArbol(); 
+        actualizarDisco();
+        actualizarTabla();
+        expandirTodoElArbol(); 
     }
 
     private void actualizarArbol() {
@@ -139,9 +132,7 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private DefaultMutableTreeNode crearNodoVisual(ElementoSistema elemento) {
-        // Ahora guardamos el OBJETO, no solo el String
         DefaultMutableTreeNode nodo = new DefaultMutableTreeNode(elemento);
-
         if (elemento instanceof Directorio) {
             Directorio dir = (Directorio) elemento;
             for (int i = 0; i < dir.obtenerHijos().obtenerTamano(); i++) {
@@ -150,6 +141,56 @@ public class VentanaPrincipal extends JFrame {
             }
         }
         return nodo;
+    }
+
+    private void actualizarDisco() {
+        panelDisco.removeAll();
+        int totalBloques = gestor.obtenerDisco().obtenerCantidadBloques();
+        panelDisco.setLayout(new GridLayout(10, 10, 2, 2));
+
+        for (int i = 0; i < totalBloques; i++) {
+            Bloque b = gestor.obtenerDisco().obtenerBloque(i);
+            JPanel panelBloque = new JPanel(new BorderLayout());
+            panelBloque.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+            
+            JLabel lblId = new JLabel(String.valueOf(b.obtenerId()), SwingConstants.CENTER);
+            lblId.setForeground(Color.WHITE);
+            panelBloque.add(lblId, BorderLayout.CENTER);
+
+            if (b.estaOcupado()) {
+                Archivo a = gestor.buscarArchivoPorNombre(b.obtenerNombreArchivo());
+                if (a != null) {
+                    panelBloque.setBackground(a.obtenerColor());
+                    String txtSiguiente = b.obtenerSiguienteBloque() != -1 ? "->" + b.obtenerSiguienteBloque() : "Fin";
+                    JLabel lblSig = new JLabel(txtSiguiente, SwingConstants.CENTER);
+                    lblSig.setForeground(Color.WHITE);
+                    lblSig.setFont(new Font("Arial", Font.BOLD, 10));
+                    panelBloque.add(lblSig, BorderLayout.SOUTH);
+                }
+            } else {
+                panelBloque.setBackground(Color.GRAY);
+            }
+            panelDisco.add(panelBloque);
+        }
+        panelDisco.revalidate();
+        panelDisco.repaint();
+    }
+
+    private void actualizarTabla() {
+        String[] columnas = {"Nombre Archivo", "Bloques Asignados", "Primer Bloque", "Color (RGB)"};
+        estructuras.Lista<Archivo> archivos = gestor.obtenerTodosLosArchivos();
+        Object[][] datos = new Object[archivos.obtenerTamano()][4];
+
+        for (int i = 0; i < archivos.obtenerTamano(); i++) {
+            Archivo a = archivos.obtener(i);
+            datos[i][0] = a.obtenerNombre();
+            datos[i][1] = a.obtenerTamano();
+            datos[i][2] = a.obtenerBloqueInicial();
+            Color c = a.obtenerColor();
+            datos[i][3] = "RGB(" + c.getRed() + ", " + c.getGreen() + ", " + c.getBlue() + ")";
+        }
+
+        tablaAsignacion.setModel(new DefaultTableModel(datos, columnas));
     }
 
     private void expandirTodoElArbol() {
