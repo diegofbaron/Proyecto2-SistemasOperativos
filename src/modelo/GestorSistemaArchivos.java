@@ -2,6 +2,7 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
+
 package modelo;
 
 import estructuras.Cola;
@@ -101,5 +102,26 @@ public class GestorSistemaArchivos {
             }
         }
         return null;
+    }
+
+    public void eliminarElemento(ElementoSistema elemento) {
+        if (elemento instanceof Archivo) {
+            Archivo a = (Archivo) elemento;
+            int bloqueActual = a.obtenerBloqueInicial();
+            while (bloqueActual != -1) {
+                int siguiente = disco.obtenerBloque(bloqueActual).obtenerSiguienteBloque();
+                disco.liberarBloque(bloqueActual);
+                bloqueActual = siguiente;
+            }
+            todosLosArchivos.eliminar(a);
+        } else if (elemento instanceof Directorio) {
+            Directorio dir = (Directorio) elemento;
+            for (int i = dir.obtenerHijos().obtenerTamano() - 1; i >= 0; i--) {
+                eliminarElemento(dir.obtenerHijos().obtener(i));
+            }
+        }
+        if (elemento.obtenerPadre() != null) {
+            elemento.obtenerPadre().eliminarHijo(elemento);
+        }
     }
 }

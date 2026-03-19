@@ -14,7 +14,6 @@ import modelo.*;
 public class VentanaPrincipal extends JFrame {
     
     private GestorSistemaArchivos gestor;
-
     private JTree arbolSistema;
     private JTable tablaAsignacion;
     private JPanel panelDisco;
@@ -66,6 +65,7 @@ public class VentanaPrincipal extends JFrame {
         add(panelControles, BorderLayout.SOUTH);
 
         btnCrear.addActionListener(e -> accionCrearElemento());
+        btnEliminar.addActionListener(e -> accionEliminarElemento());
 
         actualizarArbol();
         actualizarDisco();
@@ -123,6 +123,36 @@ public class VentanaPrincipal extends JFrame {
         actualizarDisco();
         actualizarTabla();
         expandirTodoElArbol(); 
+    }
+
+    private void accionEliminarElemento() {
+        if (comboModoUsuario.getSelectedIndex() != 0) {
+            JOptionPane.showMessageDialog(this, "Solo los administradores pueden eliminar elementos.", "Acceso Denegado", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodoSeleccionado == null) {
+            JOptionPane.showMessageDialog(this, "Por favor, selecciona un elemento para eliminar.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        ElementoSistema elemento = (ElementoSistema) nodoSeleccionado.getUserObject();
+
+        if (elemento.obtenerPadre() == null) {
+            JOptionPane.showMessageDialog(this, "No puedes eliminar el directorio Raíz del sistema.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        int confirmacion = JOptionPane.showConfirmDialog(this, "¿Estás seguro de que deseas eliminar '" + elemento.obtenerNombre() + "'?", "Confirmar Eliminación", JOptionPane.YES_NO_OPTION);
+        
+        if (confirmacion == JOptionPane.YES_OPTION) {
+            gestor.eliminarElemento(elemento);
+            actualizarArbol();
+            actualizarDisco();
+            actualizarTabla();
+            expandirTodoElArbol();
+        }
     }
 
     private void actualizarArbol() {
