@@ -92,4 +92,14 @@ public class GestorSistemaArchivos {
             return false;
         }
     }
+
+    public Archivo buscarArchivoPorNombre(String nombre) {
+        for (int i = 0; i < todosLosArchivos.obtenerTamano(); i++) {
+            Archivo a = todosLosArchivos.obtener(i);
+            if (a.obtenerNombre().equals(nombre)) {
+                return a;
+            }
+        }
+        return null;
+    }
 }
