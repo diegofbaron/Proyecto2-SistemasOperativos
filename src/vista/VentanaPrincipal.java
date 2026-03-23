@@ -31,9 +31,14 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnCargarEstado;
     private JButton btnSimularFallo;
     private JButton btnRecuperarJournal;
+    private JButton btnActualizarMonitoreo;
     private JLabel lblPoliticaActiva;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
+    private JTextArea areaCola;
+    private JTextArea areaHistorial;
+    private JTextArea areaLocks;
+    private JTextArea areaJournal;
 
     public VentanaPrincipal() {
         gestor = new GestorSistemaArchivos(100); 
@@ -64,7 +69,11 @@ public class VentanaPrincipal extends JFrame {
         scrollTabla.setBorder(BorderFactory.createTitledBorder("Tabla de Asignación"));
         panelCentral.add(scrollTabla);
 
-        add(panelCentral, BorderLayout.CENTER);
+        JTabbedPane panelMonitoreo = crearPanelMonitoreo();
+        JSplitPane splitPrincipal = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, panelCentral, panelMonitoreo);
+        splitPrincipal.setResizeWeight(0.72);
+        splitPrincipal.setDividerLocation(720);
+        add(splitPrincipal, BorderLayout.CENTER);
 
         JPanel panelControles = new JPanel(new GridLayout(2, 1, 0, 4));
         JPanel filaSuperior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
@@ -84,6 +93,7 @@ public class VentanaPrincipal extends JFrame {
         btnCargarEstado = new JButton("Cargar JSON");
         btnSimularFallo = new JButton("Simular Fallo: OFF");
         btnRecuperarJournal = new JButton("Recuperar Journal");
+        btnActualizarMonitoreo = new JButton("Actualizar Monitoreo");
         lblPoliticaActiva = new JLabel();
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
@@ -107,6 +117,7 @@ public class VentanaPrincipal extends JFrame {
         filaInferior.add(btnAplicarPlanificador);
         filaInferior.add(btnSimularFallo);
         filaInferior.add(btnRecuperarJournal);
+        filaInferior.add(btnActualizarMonitoreo);
         filaInferior.add(lblPoliticaActiva);
         filaInferior.add(lblCabezalActual);
         filaInferior.add(lblDesplazamiento);
@@ -126,12 +137,14 @@ public class VentanaPrincipal extends JFrame {
         btnCargarEstado.addActionListener(e -> accionCargarEstado());
         btnSimularFallo.addActionListener(e -> accionToggleFallo());
         btnRecuperarJournal.addActionListener(e -> accionRecuperarJournal());
+        btnActualizarMonitoreo.addActionListener(e -> actualizarPanelMonitoreo());
 
         actualizarArbol();
         actualizarDisco();
         actualizarTabla();
         aplicarSesionActual();
         actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
     }
 
     private void accionCrearElemento() {
@@ -188,6 +201,7 @@ public class VentanaPrincipal extends JFrame {
         actualizarDisco();
         actualizarTabla();
         actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
         expandirTodoElArbol(); 
     }
 
@@ -219,6 +233,7 @@ public class VentanaPrincipal extends JFrame {
         actualizarDisco();
         actualizarTabla();
         actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
         expandirTodoElArbol();
     }
 
@@ -229,12 +244,14 @@ public class VentanaPrincipal extends JFrame {
 
         gestor.configurarPlanificador(politica, posicionInicial, direccionAsc);
         actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
     }
 
     private void accionToggleFallo() {
         boolean activar = !gestor.estaSimulacionFalloActiva();
         gestor.configurarSimulacionFallo(activar);
         actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
     }
 
     private void accionRecuperarJournal() {
@@ -243,6 +260,7 @@ public class VentanaPrincipal extends JFrame {
         actualizarDisco();
         actualizarTabla();
         actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
         expandirTodoElArbol();
         JOptionPane.showMessageDialog(this, "Recuperación finalizada. Entradas procesadas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -260,6 +278,7 @@ public class VentanaPrincipal extends JFrame {
             return;
         }
         JOptionPane.showMessageDialog(this, "Estado guardado correctamente.", "Guardar JSON", JOptionPane.INFORMATION_MESSAGE);
+        actualizarPanelMonitoreo();
     }
 
     private void accionCargarEstado() {
@@ -285,6 +304,7 @@ public class VentanaPrincipal extends JFrame {
         actualizarDisco();
         actualizarTabla();
         actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
         expandirTodoElArbol();
 
         int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
@@ -293,6 +313,7 @@ public class VentanaPrincipal extends JFrame {
             actualizarDisco();
             actualizarTabla();
             actualizarEstadoPlanificador();
+            actualizarPanelMonitoreo();
             expandirTodoElArbol();
             JOptionPane.showMessageDialog(this, "Se recuperaron " + recuperadas + " transacciones pendientes del journal.", "Recuperación automática", JOptionPane.INFORMATION_MESSAGE);
         }
@@ -331,6 +352,7 @@ public class VentanaPrincipal extends JFrame {
             actualizarDisco();
             actualizarTabla();
             actualizarEstadoPlanificador();
+            actualizarPanelMonitoreo();
             expandirTodoElArbol();
         }
     }
@@ -347,6 +369,48 @@ public class VentanaPrincipal extends JFrame {
         lblCabezalActual.setText("Cabezal actual: " + gestor.obtenerPosicionCabezal());
         lblDesplazamiento.setText("Desplazamiento: " + gestor.obtenerDesplazamientoCabezal());
         btnSimularFallo.setText(gestor.estaSimulacionFalloActiva() ? "Simular Fallo: ON" : "Simular Fallo: OFF");
+    }
+
+    private JTabbedPane crearPanelMonitoreo() {
+        areaCola = crearAreaMonitoreo();
+        areaHistorial = crearAreaMonitoreo();
+        areaLocks = crearAreaMonitoreo();
+        areaJournal = crearAreaMonitoreo();
+
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.addTab("Cola", new JScrollPane(areaCola));
+        tabs.addTab("Historial", new JScrollPane(areaHistorial));
+        tabs.addTab("Locks", new JScrollPane(areaLocks));
+        tabs.addTab("Journal", new JScrollPane(areaJournal));
+        tabs.setPreferredSize(new Dimension(300, 0));
+        return tabs;
+    }
+
+    private JTextArea crearAreaMonitoreo() {
+        JTextArea area = new JTextArea();
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        return area;
+    }
+
+    private void actualizarPanelMonitoreo() {
+        areaCola.setText(textoDesdeLista(gestor.obtenerResumenColaProcesos(), "No hay procesos pendientes."));
+        areaHistorial.setText(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(30), "No hay historial."));
+        areaLocks.setText(textoDesdeLista(gestor.obtenerResumenLocksActivos(), "No hay locks activos."));
+        areaJournal.setText(textoDesdeLista(gestor.obtenerResumenJournal(), "No hay entradas de journal."));
+    }
+
+    private String textoDesdeLista(estructuras.Lista<String> lista, String vacio) {
+        if (lista == null || lista.obtenerTamano() == 0) {
+            return vacio;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lista.obtenerTamano(); i++) {
+            sb.append(lista.obtener(i)).append("\n");
+        }
+        return sb.toString();
     }
 
     private void actualizarArbol() {

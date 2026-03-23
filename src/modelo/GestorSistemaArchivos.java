@@ -130,6 +130,40 @@ public class GestorSistemaArchivos {
         return resumen;
     }
 
+    public Lista<String> obtenerResumenColaProcesos() {
+        Lista<String> resumen = new Lista<>();
+        for (int i = 0; i < colaProcesos.obtenerTamano(); i++) {
+            Proceso proceso = colaProcesos.obtener(i);
+            resumen.agregar(formatearProceso(proceso));
+        }
+        return resumen;
+    }
+
+    public Lista<String> obtenerResumenHistorialProcesos(int limite) {
+        Lista<String> resumen = new Lista<>();
+        int total = historialProcesos.obtenerTamano();
+        int inicio = Math.max(0, total - Math.max(0, limite));
+        for (int i = inicio; i < total; i++) {
+            Proceso proceso = historialProcesos.obtener(i);
+            resumen.agregar(formatearProceso(proceso));
+        }
+        return resumen;
+    }
+
+    public Lista<String> obtenerResumenLocksActivos() {
+        Lista<String> resumen = new Lista<>();
+        for (int i = 0; i < todosLosArchivos.obtenerTamano(); i++) {
+            Archivo archivo = todosLosArchivos.obtener(i);
+            int enEspera = archivo.obtenerColaEspera().obtenerTamano();
+            if (archivo.obtenerLectoresActivos() == 0 && !archivo.tieneLockEscrituraActivo() && enEspera == 0) {
+                continue;
+            }
+            String escritor = archivo.tieneLockEscrituraActivo() ? String.valueOf(archivo.obtenerProcesoEscritor()) : "-";
+            resumen.agregar(archivo.obtenerNombre() + " | R=" + archivo.obtenerLectoresActivos() + " W=" + escritor + " Q=" + enEspera);
+        }
+        return resumen;
+    }
+
     public int ejecutarRecuperacionJournalPendientes() {
         int recuperadas = 0;
         for (int i = 0; i < journal.obtenerTamano(); i++) {
@@ -149,6 +183,19 @@ public class GestorSistemaArchivos {
             recuperadas++;
         }
         return recuperadas;
+    }
+
+    private String formatearProceso(Proceso proceso) {
+        if (proceso == null) {
+            return "(proceso nulo)";
+        }
+        String nombreArchivo = proceso.obtenerArchivoDestino() != null
+                ? proceso.obtenerArchivoDestino().obtenerNombre()
+                : "(sin archivo)";
+        return "P" + proceso.obtenerId() + " " + proceso.obtenerOperacion()
+                + " " + nombreArchivo
+                + " | " + proceso.obtenerEstado()
+                + " | " + proceso.obtenerMensajeResultado();
     }
 
     public String guardarEstadoEnJson(String rutaArchivo) {
