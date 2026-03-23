@@ -27,6 +27,8 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnAplicarPlanificador;
     private JTextField txtUsuario;
     private JButton btnAplicarSesion;
+    private JButton btnGuardarEstado;
+    private JButton btnCargarEstado;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
 
@@ -73,6 +75,8 @@ public class VentanaPrincipal extends JFrame {
         btnAplicarPlanificador = new JButton("Aplicar Planificador");
         txtUsuario = new JTextField("admin", 8);
         btnAplicarSesion = new JButton("Aplicar Sesión");
+        btnGuardarEstado = new JButton("Guardar JSON");
+        btnCargarEstado = new JButton("Cargar JSON");
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
 
@@ -90,6 +94,8 @@ public class VentanaPrincipal extends JFrame {
         panelControles.add(spinnerCabezalInicial);
         panelControles.add(chkDireccionAscendente);
         panelControles.add(btnAplicarPlanificador);
+        panelControles.add(btnGuardarEstado);
+        panelControles.add(btnCargarEstado);
         panelControles.add(lblCabezalActual);
         panelControles.add(lblDesplazamiento);
 
@@ -101,6 +107,8 @@ public class VentanaPrincipal extends JFrame {
         btnAplicarPlanificador.addActionListener(e -> accionAplicarPlanificador());
         btnAplicarSesion.addActionListener(e -> aplicarSesionActual());
         comboModoUsuario.addActionListener(e -> aplicarSesionActual());
+        btnGuardarEstado.addActionListener(e -> accionGuardarEstado());
+        btnCargarEstado.addActionListener(e -> accionCargarEstado());
 
         actualizarArbol();
         actualizarDisco();
@@ -204,6 +212,49 @@ public class VentanaPrincipal extends JFrame {
 
         gestor.configurarPlanificador(politica, posicionInicial, direccionAsc);
         actualizarEstadoPlanificador();
+    }
+
+    private void accionGuardarEstado() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Guardar estado en JSON");
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        String error = gestor.guardarEstadoEnJson(chooser.getSelectedFile().getAbsolutePath());
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        JOptionPane.showMessageDialog(this, "Estado guardado correctamente.", "Guardar JSON", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void accionCargarEstado() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Cargar estado desde JSON");
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        String error = gestor.cargarEstadoDesdeJson(chooser.getSelectedFile().getAbsolutePath());
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        txtUsuario.setText(gestor.obtenerUsuarioActual());
+        comboModoUsuario.setSelectedIndex(gestor.esModoAdministrador() ? 0 : 1);
+        comboPolitica.setSelectedItem(gestor.obtenerPoliticaActiva());
+        spinnerCabezalInicial.setValue(gestor.obtenerPosicionCabezal());
+        chkDireccionAscendente.setSelected(gestor.esDireccionAscendente());
+
+        actualizarArbol();
+        actualizarDisco();
+        actualizarTabla();
+        actualizarEstadoPlanificador();
+        expandirTodoElArbol();
+
+        JOptionPane.showMessageDialog(this, "Estado cargado correctamente.", "Cargar JSON", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void accionEliminarElemento() {

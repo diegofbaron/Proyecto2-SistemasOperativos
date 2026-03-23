@@ -7,6 +7,12 @@ package modelo;
 
 import estructuras.Cola;
 import estructuras.Lista;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class GestorSistemaArchivos {
     private DiscoVirtual disco;
@@ -99,6 +105,36 @@ public class GestorSistemaArchivos {
 
     public boolean esModoAdministrador() {
         return modoAdministrador;
+    }
+
+    public String guardarEstadoEnJson(String rutaArchivo) {
+        if (rutaArchivo == null || rutaArchivo.trim().isEmpty()) {
+            return "Ruta de archivo inválida.";
+        }
+
+        try {
+            String json = construirJsonEstado();
+            Files.writeString(Path.of(rutaArchivo), json, StandardCharsets.UTF_8);
+            return null;
+        } catch (IOException ex) {
+            return "No se pudo guardar el estado: " + ex.getMessage();
+        }
+    }
+
+    public String cargarEstadoDesdeJson(String rutaArchivo) {
+        if (rutaArchivo == null || rutaArchivo.trim().isEmpty()) {
+            return "Ruta de archivo inválida.";
+        }
+
+        try {
+            String json = Files.readString(Path.of(rutaArchivo), StandardCharsets.UTF_8);
+            restaurarDesdeJson(json);
+            return null;
+        } catch (IOException ex) {
+            return "No se pudo leer el archivo JSON: " + ex.getMessage();
+        } catch (RuntimeException ex) {
+            return "Formato JSON inválido o incompatible: " + ex.getMessage();
+        }
     }
 
     public String crearArchivo(String nombre, String dueno, Directorio padre, int tamano) {
@@ -637,6 +673,436 @@ public class GestorSistemaArchivos {
             }
         }
         return null;
+    }
+
+    private String construirJsonEstado() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n");
+        sb.append("  \"version\":1,\n");
+        sb.append("  \"cantidadBloques\":").append(disco.obtenerCantidadBloques()).append(",\n");
+        sb.append("  \"sesion\":{\"usuario\":\"").append(escaparJson(usuarioActual)).append("\",\"admin\":").append(modoAdministrador).append("},\n");
+        sb.append("  \"planificador\":{\"politica\":\"").append(politicaActiva.name()).append("\",\"cabezal\":").append(posicionCabezal)
+            .append(",\"desplazamiento\":").append(desplazamientoCabezal).append(",\"asc\":").append(direccionAscendente).append("},\n");
+
+        Lista<Directorio> directorios = new Lista<>();
+        recolectarDirectorios(raiz, directorios);
+        sb.append("  \"directorios\":[\n");
+        for (int i = 0; i < directorios.obtenerTamano(); i++) {
+            Directorio dir = directorios.obtener(i);
+            String ruta = construirRutaElemento(dir);
+            String rutaPadre = dir.obtenerPadre() == null ? "null" : "\"" + escaparJson(construirRutaElemento(dir.obtenerPadre())) + "\"";
+            sb.append("    {\"ruta\":\"").append(escaparJson(ruta)).append("\",\"nombre\":\"").append(escaparJson(dir.obtenerNombre()))
+                .append("\",\"dueno\":\"").append(escaparJson(dir.obtenerDueno())).append("\",\"publico\":").append(dir.esPublico())
+                .append(",\"padre\":").append(rutaPadre).append("}");
+            if (i < directorios.obtenerTamano() - 1) {
+                sb.append(",");
+            }
+            sb.append("\n");
+        }
+        sb.append("  ],\n");
+
+        sb.append("  \"archivos\":[\n");
+        for (int i = 0; i < todosLosArchivos.obtenerTamano(); i++) {
+            Archivo archivo = todosLosArchivos.obtener(i);
+            String ruta = construirRutaElemento(archivo);
+            String rutaPadre = archivo.obtenerPadre() == null ? "null" : "\"" + escaparJson(construirRutaElemento(archivo.obtenerPadre())) + "\"";
+            sb.append("    {\"ruta\":\"").append(escaparJson(ruta)).append("\",\"nombre\":\"").append(escaparJson(archivo.obtenerNombre()))
+                .append("\",\"dueno\":\"").append(escaparJson(archivo.obtenerDueno())).append("\",\"publico\":").append(archivo.esPublico())
+                .append(",\"tamano\":").append(archivo.obtenerTamano()).append(",\"bloqueInicial\":").append(archivo.obtenerBloqueInicial())
+                .append(",\"padre\":").append(rutaPadre).append("}");
+            if (i < todosLosArchivos.obtenerTamano() - 1) {
+                sb.append(",");
+            }
+            sb.append("\n");
+        }
+        sb.append("  ],\n");
+
+        sb.append("  \"bloques\":[\n");
+        for (int i = 0; i < disco.obtenerCantidadBloques(); i++) {
+            Bloque b = disco.obtenerBloque(i);
+            sb.append("    {\"id\":").append(b.obtenerId()).append(",\"ocupado\":").append(b.estaOcupado())
+                .append(",\"archivo\":\"").append(escaparJson(b.obtenerNombreArchivo())).append("\",\"siguiente\":").append(b.obtenerSiguienteBloque()).append("}");
+            if (i < disco.obtenerCantidadBloques() - 1) {
+                sb.append(",");
+            }
+            sb.append("\n");
+        }
+        sb.append("  ]\n");
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private void restaurarDesdeJson(String json) {
+        int cantidadBloques = extraerEntero(json, "cantidadBloques", disco.obtenerCantidadBloques());
+        String usuario = extraerCadena(json, "usuario", "admin");
+        boolean admin = extraerBooleano(json, "admin", true);
+        String politicaTexto = extraerCadena(json, "politica", PoliticaPlanificacion.FIFO.name());
+        int cabezal = extraerEntero(json, "cabezal", 0);
+        int desplazamiento = extraerEntero(json, "desplazamiento", 0);
+        boolean asc = extraerBooleano(json, "asc", true);
+
+        reinicializarEstado(cantidadBloques);
+
+        Lista<RegistroDirectorio> directorios = parsearDirectorios(extraerSeccionArreglo(json, "directorios"));
+        Lista<RutaDirectorio> rutas = construirDirectoriosDesdeRegistros(directorios);
+
+        Lista<RegistroArchivo> archivos = parsearArchivos(extraerSeccionArreglo(json, "archivos"));
+        construirArchivosDesdeRegistros(archivos, rutas);
+
+        Lista<RegistroBloque> bloques = parsearBloques(extraerSeccionArreglo(json, "bloques"));
+        aplicarBloques(bloques);
+
+        configurarSesion(usuario, admin);
+        PoliticaPlanificacion politica = parsearPolitica(politicaTexto);
+        configurarPlanificador(politica, cabezal, asc);
+        this.desplazamientoCabezal = desplazamiento;
+    }
+
+    private void reinicializarEstado(int cantidadBloques) {
+        this.disco = new DiscoVirtual(cantidadBloques);
+        this.raiz = new Directorio("Raiz", "admin", null);
+        this.colaProcesos = new Cola<>();
+        this.historialProcesos = new Lista<>();
+        this.todosLosArchivos = new Lista<>();
+        this.contadorProcesos = 1;
+        this.maximoIndiceDisco = Math.max(0, cantidadBloques - 1);
+    }
+
+    private Lista<RegistroDirectorio> parsearDirectorios(String arregloJson) {
+        Lista<RegistroDirectorio> resultado = new Lista<>();
+        Lista<String> objetos = dividirObjetos(arregloJson);
+        for (int i = 0; i < objetos.obtenerTamano(); i++) {
+            String obj = objetos.obtener(i);
+            RegistroDirectorio reg = new RegistroDirectorio();
+            reg.ruta = extraerCadena(obj, "ruta", "/Raiz");
+            reg.nombre = extraerCadena(obj, "nombre", "Raiz");
+            reg.dueno = extraerCadena(obj, "dueno", "admin");
+            reg.publico = extraerBooleano(obj, "publico", false);
+            reg.padre = extraerCadenaNullable(obj, "padre");
+            resultado.agregar(reg);
+        }
+        return resultado;
+    }
+
+    private Lista<RegistroArchivo> parsearArchivos(String arregloJson) {
+        Lista<RegistroArchivo> resultado = new Lista<>();
+        Lista<String> objetos = dividirObjetos(arregloJson);
+        for (int i = 0; i < objetos.obtenerTamano(); i++) {
+            String obj = objetos.obtener(i);
+            RegistroArchivo reg = new RegistroArchivo();
+            reg.ruta = extraerCadena(obj, "ruta", "");
+            reg.nombre = extraerCadena(obj, "nombre", "");
+            reg.dueno = extraerCadena(obj, "dueno", "admin");
+            reg.publico = extraerBooleano(obj, "publico", false);
+            reg.tamano = extraerEntero(obj, "tamano", 1);
+            reg.bloqueInicial = extraerEntero(obj, "bloqueInicial", -1);
+            reg.padre = extraerCadenaNullable(obj, "padre");
+            resultado.agregar(reg);
+        }
+        return resultado;
+    }
+
+    private Lista<RegistroBloque> parsearBloques(String arregloJson) {
+        Lista<RegistroBloque> resultado = new Lista<>();
+        Lista<String> objetos = dividirObjetos(arregloJson);
+        for (int i = 0; i < objetos.obtenerTamano(); i++) {
+            String obj = objetos.obtener(i);
+            RegistroBloque reg = new RegistroBloque();
+            reg.id = extraerEntero(obj, "id", i);
+            reg.ocupado = extraerBooleano(obj, "ocupado", false);
+            reg.archivo = extraerCadena(obj, "archivo", "");
+            reg.siguiente = extraerEntero(obj, "siguiente", -1);
+            resultado.agregar(reg);
+        }
+        return resultado;
+    }
+
+    private Lista<RutaDirectorio> construirDirectoriosDesdeRegistros(Lista<RegistroDirectorio> registros) {
+        Lista<RutaDirectorio> rutas = new Lista<>();
+
+        RegistroDirectorio rootReg = encontrarRegistroRaiz(registros);
+        this.raiz = new Directorio(rootReg.nombre, rootReg.dueno, null);
+        this.raiz.establecerPublico(rootReg.publico);
+
+        RutaDirectorio raizRuta = new RutaDirectorio();
+        raizRuta.ruta = rootReg.ruta;
+        raizRuta.directorio = this.raiz;
+        rutas.agregar(raizRuta);
+
+        boolean progreso = true;
+        while (progreso) {
+            progreso = false;
+            for (int i = 0; i < registros.obtenerTamano(); i++) {
+                RegistroDirectorio reg = registros.obtener(i);
+                if (reg.padre == null) {
+                    continue;
+                }
+                if (buscarDirectorioPorRuta(rutas, reg.ruta) != null) {
+                    continue;
+                }
+
+                Directorio padre = buscarDirectorioPorRuta(rutas, reg.padre);
+                if (padre == null) {
+                    continue;
+                }
+
+                Directorio nuevo = new Directorio(reg.nombre, reg.dueno, padre);
+                nuevo.establecerPublico(reg.publico);
+                padre.agregarHijo(nuevo);
+
+                RutaDirectorio map = new RutaDirectorio();
+                map.ruta = reg.ruta;
+                map.directorio = nuevo;
+                rutas.agregar(map);
+                progreso = true;
+            }
+        }
+
+        return rutas;
+    }
+
+    private void construirArchivosDesdeRegistros(Lista<RegistroArchivo> registros, Lista<RutaDirectorio> rutas) {
+        for (int i = 0; i < registros.obtenerTamano(); i++) {
+            RegistroArchivo reg = registros.obtener(i);
+            Directorio padre = reg.padre == null ? raiz : buscarDirectorioPorRuta(rutas, reg.padre);
+            if (padre == null) {
+                padre = raiz;
+            }
+
+            Archivo archivo = new Archivo(reg.nombre, reg.dueno, padre, reg.tamano);
+            archivo.establecerPublico(reg.publico);
+            archivo.establecerBloqueInicial(reg.bloqueInicial);
+            padre.agregarHijo(archivo);
+            todosLosArchivos.agregar(archivo);
+        }
+    }
+
+    private void aplicarBloques(Lista<RegistroBloque> bloques) {
+        for (int i = 0; i < disco.obtenerCantidadBloques(); i++) {
+            disco.liberarBloque(i);
+        }
+
+        for (int i = 0; i < bloques.obtenerTamano(); i++) {
+            RegistroBloque reg = bloques.obtener(i);
+            if (reg.id < 0 || reg.id >= disco.obtenerCantidadBloques()) {
+                continue;
+            }
+            if (reg.ocupado) {
+                disco.ocuparBloque(reg.id, reg.archivo, reg.siguiente);
+            } else {
+                disco.liberarBloque(reg.id);
+            }
+        }
+    }
+
+    private RegistroDirectorio encontrarRegistroRaiz(Lista<RegistroDirectorio> registros) {
+        for (int i = 0; i < registros.obtenerTamano(); i++) {
+            RegistroDirectorio reg = registros.obtener(i);
+            if (reg.padre == null) {
+                return reg;
+            }
+        }
+        RegistroDirectorio fallback = new RegistroDirectorio();
+        fallback.ruta = "/Raiz";
+        fallback.nombre = "Raiz";
+        fallback.dueno = "admin";
+        fallback.publico = false;
+        fallback.padre = null;
+        return fallback;
+    }
+
+    private Directorio buscarDirectorioPorRuta(Lista<RutaDirectorio> rutas, String ruta) {
+        for (int i = 0; i < rutas.obtenerTamano(); i++) {
+            RutaDirectorio item = rutas.obtener(i);
+            if (item.ruta.equals(ruta)) {
+                return item.directorio;
+            }
+        }
+        return null;
+    }
+
+    private void recolectarDirectorios(Directorio actual, Lista<Directorio> acumulado) {
+        acumulado.agregar(actual);
+        for (int i = 0; i < actual.obtenerHijos().obtenerTamano(); i++) {
+            ElementoSistema hijo = actual.obtenerHijos().obtener(i);
+            if (hijo instanceof Directorio) {
+                recolectarDirectorios((Directorio) hijo, acumulado);
+            }
+        }
+    }
+
+    private String construirRutaElemento(ElementoSistema elemento) {
+        if (elemento == null) {
+            return "";
+        }
+        if (elemento.obtenerPadre() == null) {
+            return "/" + elemento.obtenerNombre();
+        }
+        return construirRutaElemento(elemento.obtenerPadre()) + "/" + elemento.obtenerNombre();
+    }
+
+    private String escaparJson(String valor) {
+        if (valor == null) {
+            return "";
+        }
+        return valor.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private String desescaparJson(String valor) {
+        if (valor == null) {
+            return "";
+        }
+        return valor.replace("\\\"", "\"").replace("\\\\", "\\");
+    }
+
+    private String extraerSeccionArreglo(String json, String clave) {
+        int idx = json.indexOf("\"" + clave + "\"");
+        if (idx == -1) {
+            return "[]";
+        }
+        int inicio = json.indexOf('[', idx);
+        if (inicio == -1) {
+            return "[]";
+        }
+        int fin = buscarCierre(json, inicio, '[', ']');
+        if (fin == -1) {
+            return "[]";
+        }
+        return json.substring(inicio, fin + 1);
+    }
+
+    private int buscarCierre(String texto, int inicio, char abre, char cierra) {
+        int nivel = 0;
+        boolean enCadena = false;
+        for (int i = inicio; i < texto.length(); i++) {
+            char c = texto.charAt(i);
+            if (c == '"' && (i == 0 || texto.charAt(i - 1) != '\\')) {
+                enCadena = !enCadena;
+                continue;
+            }
+            if (enCadena) {
+                continue;
+            }
+            if (c == abre) {
+                nivel++;
+            } else if (c == cierra) {
+                nivel--;
+                if (nivel == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private Lista<String> dividirObjetos(String arregloJson) {
+        Lista<String> objetos = new Lista<>();
+        if (arregloJson == null || arregloJson.length() < 2) {
+            return objetos;
+        }
+
+        boolean enCadena = false;
+        int nivel = 0;
+        int inicioObj = -1;
+        for (int i = 0; i < arregloJson.length(); i++) {
+            char c = arregloJson.charAt(i);
+            if (c == '"' && (i == 0 || arregloJson.charAt(i - 1) != '\\')) {
+                enCadena = !enCadena;
+                continue;
+            }
+            if (enCadena) {
+                continue;
+            }
+            if (c == '{') {
+                if (nivel == 0) {
+                    inicioObj = i;
+                }
+                nivel++;
+            } else if (c == '}') {
+                nivel--;
+                if (nivel == 0 && inicioObj != -1) {
+                    objetos.agregar(arregloJson.substring(inicioObj, i + 1));
+                    inicioObj = -1;
+                }
+            }
+        }
+
+        return objetos;
+    }
+
+    private String extraerCadena(String json, String clave, String valorDefecto) {
+        Pattern p = Pattern.compile("\\\"" + Pattern.quote(clave) + "\\\"\\s*:\\s*\\\"(.*?)\\\"");
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            return desescaparJson(m.group(1));
+        }
+        return valorDefecto;
+    }
+
+    private String extraerCadenaNullable(String json, String clave) {
+        Pattern nullPattern = Pattern.compile("\\\"" + Pattern.quote(clave) + "\\\"\\s*:\\s*null");
+        Matcher nullMatcher = nullPattern.matcher(json);
+        if (nullMatcher.find()) {
+            return null;
+        }
+        return extraerCadena(json, clave, null);
+    }
+
+    private int extraerEntero(String json, String clave, int valorDefecto) {
+        Pattern p = Pattern.compile("\\\"" + Pattern.quote(clave) + "\\\"\\s*:\\s*(-?\\d+)");
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            return Integer.parseInt(m.group(1));
+        }
+        return valorDefecto;
+    }
+
+    private boolean extraerBooleano(String json, String clave, boolean valorDefecto) {
+        Pattern p = Pattern.compile("\\\"" + Pattern.quote(clave) + "\\\"\\s*:\\s*(true|false)");
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            return Boolean.parseBoolean(m.group(1));
+        }
+        return valorDefecto;
+    }
+
+    private PoliticaPlanificacion parsearPolitica(String politicaTexto) {
+        for (PoliticaPlanificacion p : PoliticaPlanificacion.values()) {
+            if (p.name().equalsIgnoreCase(politicaTexto)) {
+                return p;
+            }
+        }
+        return PoliticaPlanificacion.FIFO;
+    }
+
+    private static class RegistroDirectorio {
+        String ruta;
+        String nombre;
+        String dueno;
+        boolean publico;
+        String padre;
+    }
+
+    private static class RegistroArchivo {
+        String ruta;
+        String nombre;
+        String dueno;
+        boolean publico;
+        int tamano;
+        int bloqueInicial;
+        String padre;
+    }
+
+    private static class RegistroBloque {
+        int id;
+        boolean ocupado;
+        String archivo;
+        int siguiente;
+    }
+
+    private static class RutaDirectorio {
+        String ruta;
+        Directorio directorio;
     }
 
     private boolean intentarAdquirirLock(Archivo archivo, Proceso proceso) {
