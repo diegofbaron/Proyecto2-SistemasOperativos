@@ -26,15 +26,21 @@ public class DiscoVirtual {
     }
 
     public void ocuparBloque(int indice, String nombreArchivo, int siguiente) {
+        ocuparBloque(indice, nombreArchivo, siguiente, -1);
+    }
+
+    public void ocuparBloque(int indice, String nombreArchivo, int siguiente, int procesoOcupante) {
         bloques[indice].establecerOcupado(true);
         bloques[indice].establecerNombreArchivo(nombreArchivo);
         bloques[indice].establecerSiguienteBloque(siguiente);
+        bloques[indice].establecerProcesoOcupante(procesoOcupante);
     }
 
     public void liberarBloque(int indice) {
         bloques[indice].establecerOcupado(false);
         bloques[indice].establecerNombreArchivo("");
         bloques[indice].establecerSiguienteBloque(-1);
+        bloques[indice].establecerProcesoOcupante(-1);
     }
 
     public Bloque obtenerBloque(int indice) {

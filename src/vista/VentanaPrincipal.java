@@ -547,14 +547,22 @@ public class VentanaPrincipal extends JFrame {
                 Archivo a = gestor.buscarArchivoPorNombre(b.obtenerNombreArchivo());
                 if (a != null) {
                     panelBloque.setBackground(a.obtenerColor());
+                    String txtProceso = b.obtenerProcesoOcupante() >= 0 ? "P" + b.obtenerProcesoOcupante() : "P-";
+                    JLabel lblProceso = new JLabel(txtProceso, SwingConstants.CENTER);
+                    lblProceso.setForeground(Color.WHITE);
+                    lblProceso.setFont(new Font("Arial", Font.BOLD, 10));
+                    panelBloque.add(lblProceso, BorderLayout.NORTH);
+
                     String txtSiguiente = b.obtenerSiguienteBloque() != -1 ? "->" + b.obtenerSiguienteBloque() : "Fin";
                     JLabel lblSig = new JLabel(txtSiguiente, SwingConstants.CENTER);
                     lblSig.setForeground(Color.WHITE);
                     lblSig.setFont(new Font("Arial", Font.BOLD, 10));
                     panelBloque.add(lblSig, BorderLayout.SOUTH);
+                    panelBloque.setToolTipText("Archivo: " + b.obtenerNombreArchivo() + " | Proceso: " + txtProceso);
                 }
             } else {
                 panelBloque.setBackground(Color.GRAY);
+                panelBloque.setToolTipText("Bloque libre");
             }
             panelDisco.add(panelBloque);
         }

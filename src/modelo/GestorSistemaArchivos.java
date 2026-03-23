@@ -623,7 +623,7 @@ public class GestorSistemaArchivos {
             Archivo archivoCreado = p.obtenerArchivoDestino();
             EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.CREAR, archivoCreado, null);
 
-            boolean exito = asignarBloquesAArchivo(archivoCreado);
+            boolean exito = asignarBloquesAArchivo(archivoCreado, p.obtenerId());
             if (exito) {
                 if (simularFalloAntesCommit) {
                     p.establecerEstado(EstadoProceso.BLOQUEADO);
@@ -657,6 +657,8 @@ public class GestorSistemaArchivos {
             return;
         }
 
+        marcarProcesoEnCadenaBloques(archivoDestino, p.obtenerId());
+
         p.establecerEstado(EstadoProceso.TERMINADO);
         p.establecerMensajeResultado("Completado con lock " + tipoLockDeOperacion(p.obtenerOperacion()));
 
@@ -683,7 +685,7 @@ public class GestorSistemaArchivos {
         return;
     }
 
-    private boolean asignarBloquesAArchivo(Archivo archivo) {
+    private boolean asignarBloquesAArchivo(Archivo archivo, int procesoId) {
         int bloquesNecesarios = archivo.obtenerTamano();
         int bloquesAsignados = 0;
         int bloqueAnterior = -1;
@@ -698,7 +700,7 @@ public class GestorSistemaArchivos {
                 } else {
                     disco.obtenerBloque(bloqueAnterior).establecerSiguienteBloque(i);
                 }
-                disco.ocuparBloque(i, archivo.obtenerNombre(), -1);
+                disco.ocuparBloque(i, archivo.obtenerNombre(), -1, procesoId);
                 bloquesTemporales.agregar(i);
                 bloqueAnterior = i;
                 bloquesAsignados++;
@@ -726,6 +728,18 @@ public class GestorSistemaArchivos {
             }
         }
         return null;
+    }
+
+    private void marcarProcesoEnCadenaBloques(Archivo archivo, int procesoId) {
+        if (archivo == null) {
+            return;
+        }
+        int bloqueActual = archivo.obtenerBloqueInicial();
+        while (bloqueActual != -1 && bloqueActual < disco.obtenerCantidadBloques()) {
+            Bloque bloque = disco.obtenerBloque(bloqueActual);
+            bloque.establecerProcesoOcupante(procesoId);
+            bloqueActual = bloque.obtenerSiguienteBloque();
+        }
     }
 
     public String obtenerResumenLockArchivo(String nombreArchivo) {
@@ -1064,7 +1078,8 @@ public class GestorSistemaArchivos {
         for (int i = 0; i < disco.obtenerCantidadBloques(); i++) {
             Bloque b = disco.obtenerBloque(i);
             sb.append("    {\"id\":").append(b.obtenerId()).append(",\"ocupado\":").append(b.estaOcupado())
-                .append(",\"archivo\":\"").append(escaparJson(b.obtenerNombreArchivo())).append("\",\"siguiente\":").append(b.obtenerSiguienteBloque()).append("}");
+                .append(",\"archivo\":\"").append(escaparJson(b.obtenerNombreArchivo())).append("\",\"siguiente\":").append(b.obtenerSiguienteBloque())
+                .append(",\"proceso\":").append(b.obtenerProcesoOcupante()).append("}");
             if (i < disco.obtenerCantidadBloques() - 1) {
                 sb.append(",");
             }
@@ -1180,6 +1195,7 @@ public class GestorSistemaArchivos {
             reg.ocupado = extraerBooleano(obj, "ocupado", false);
             reg.archivo = extraerCadena(obj, "archivo", "");
             reg.siguiente = extraerEntero(obj, "siguiente", -1);
+            reg.proceso = extraerEntero(obj, "proceso", -1);
             resultado.agregar(reg);
         }
         return resultado;
@@ -1279,7 +1295,7 @@ public class GestorSistemaArchivos {
                 continue;
             }
             if (reg.ocupado) {
-                disco.ocuparBloque(reg.id, reg.archivo, reg.siguiente);
+                disco.ocuparBloque(reg.id, reg.archivo, reg.siguiente, reg.proceso);
             } else {
                 disco.liberarBloque(reg.id);
             }
@@ -1489,6 +1505,7 @@ public class GestorSistemaArchivos {
         boolean ocupado;
         String archivo;
         int siguiente;
+        int proceso;
     }
 
     private static class RutaDirectorio {
