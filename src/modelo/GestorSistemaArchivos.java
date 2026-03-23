@@ -15,6 +15,11 @@ public class GestorSistemaArchivos {
     private Lista<Proceso> historialProcesos;
     private Lista<Archivo> todosLosArchivos;
     private int contadorProcesos;
+    private PoliticaPlanificacion politicaActiva;
+    private int posicionCabezal;
+    private int desplazamientoCabezal;
+    private boolean direccionAscendente;
+    private int maximoIndiceDisco;
 
     public GestorSistemaArchivos(int cantidadBloquesDisco) {
         this.disco = new DiscoVirtual(cantidadBloquesDisco);
@@ -23,6 +28,11 @@ public class GestorSistemaArchivos {
         this.historialProcesos = new Lista<>();
         this.todosLosArchivos = new Lista<>();
         this.contadorProcesos = 1;
+        this.politicaActiva = PoliticaPlanificacion.FIFO;
+        this.posicionCabezal = 0;
+        this.desplazamientoCabezal = 0;
+        this.direccionAscendente = true;
+        this.maximoIndiceDisco = Math.max(0, cantidadBloquesDisco - 1);
     }
 
     public Directorio obtenerRaiz() {
@@ -43,6 +53,31 @@ public class GestorSistemaArchivos {
 
     public Lista<Archivo> obtenerTodosLosArchivos() {
         return todosLosArchivos;
+    }
+
+    public PoliticaPlanificacion obtenerPoliticaActiva() {
+        return politicaActiva;
+    }
+
+    public int obtenerPosicionCabezal() {
+        return posicionCabezal;
+    }
+
+    public int obtenerDesplazamientoCabezal() {
+        return desplazamientoCabezal;
+    }
+
+    public boolean esDireccionAscendente() {
+        return direccionAscendente;
+    }
+
+    public void configurarPlanificador(PoliticaPlanificacion politica, int posicionInicialCabezal, boolean direccionAscendente) {
+        if (politica != null) {
+            this.politicaActiva = politica;
+        }
+        this.posicionCabezal = normalizarPosicion(posicionInicialCabezal);
+        this.direccionAscendente = direccionAscendente;
+        this.desplazamientoCabezal = 0;
     }
 
     public String crearArchivo(String nombre, String dueno, Directorio padre, int tamano) {
@@ -78,6 +113,29 @@ public class GestorSistemaArchivos {
         return null;
     }
 
+    public String solicitarOperacionArchivo(String nombreArchivo, TipoOperacion operacion) {
+        if (operacion == null || operacion == TipoOperacion.CREAR) {
+            return "La operación solicitada no es válida para este método.";
+        }
+
+        Archivo archivo = buscarArchivoPorNombre(nombreArchivo);
+        if (archivo == null) {
+            return "No existe un archivo con ese nombre.";
+        }
+
+        int posicionSolicitud = archivo.obtenerBloqueInicial() >= 0 ? archivo.obtenerBloqueInicial() : estimarPosicionSolicitudCreacion();
+        Proceso p = new Proceso(contadorProcesos++, operacion, archivo, archivo.obtenerTamano(), posicionSolicitud);
+        p.establecerEstado(EstadoProceso.LISTO);
+        colaProcesos.encolar(p);
+        historialProcesos.agregar(p);
+
+        despacharSiguienteProceso();
+        if (p.obtenerEstado() == EstadoProceso.BLOQUEADO) {
+            return p.obtenerMensajeResultado();
+        }
+        return null;
+    }
+
     public String renombrarElemento(ElementoSistema elemento, String nuevoNombre) {
         if (elemento == null) {
             return "Debes seleccionar un elemento para renombrar.";
@@ -102,7 +160,8 @@ public class GestorSistemaArchivos {
 
     public Proceso solicitarCreacionArchivo(String nombre, String dueno, Directorio padre, int tamano) {
         Archivo nuevoArchivo = new Archivo(nombre, dueno, padre, tamano);
-        Proceso p = new Proceso(contadorProcesos++, TipoOperacion.CREAR, nuevoArchivo, tamano);
+        int posicionSolicitud = estimarPosicionSolicitudCreacion();
+        Proceso p = new Proceso(contadorProcesos++, TipoOperacion.CREAR, nuevoArchivo, tamano, posicionSolicitud);
         p.establecerEstado(EstadoProceso.LISTO);
         colaProcesos.encolar(p);
         historialProcesos.agregar(p);
@@ -110,11 +169,12 @@ public class GestorSistemaArchivos {
     }
 
     public Proceso despacharSiguienteProceso() {
-        Proceso siguiente = colaProcesos.desencolar();
+        Proceso siguiente = seleccionarSiguienteProcesoSegunPolitica();
         if (siguiente == null) {
             return null;
         }
 
+        moverCabezalHasta(siguiente.obtenerPosicionSolicitudDisco());
         ejecutarProceso(siguiente);
         return siguiente;
     }
@@ -140,7 +200,7 @@ public class GestorSistemaArchivos {
         }
 
         p.establecerEstado(EstadoProceso.EJECUTANDO);
-        p.establecerMensajeResultado("En ejecución");
+        p.establecerMensajeResultado("En ejecución en bloque " + p.obtenerPosicionSolicitudDisco());
         
         if (p.obtenerOperacion() == TipoOperacion.CREAR) {
             boolean exito = asignarBloquesAArchivo(p.obtenerArchivoDestino());
@@ -154,8 +214,30 @@ public class GestorSistemaArchivos {
             return;
         }
 
-        p.establecerEstado(EstadoProceso.BLOQUEADO);
-        p.establecerMensajeResultado("Operación no soportada por el despachador actual.");
+        Archivo archivoDestino = p.obtenerArchivoDestino();
+        if (archivoDestino == null) {
+            p.establecerEstado(EstadoProceso.BLOQUEADO);
+            p.establecerMensajeResultado("El proceso no tiene archivo destino.");
+            return;
+        }
+
+        if (!intentarAdquirirLock(archivoDestino, p)) {
+            p.establecerEstado(EstadoProceso.BLOQUEADO);
+            p.establecerMensajeResultado("Recurso bloqueado. Proceso en espera de lock.");
+            archivoDestino.obtenerColaEspera().encolar(p);
+            return;
+        }
+
+        p.establecerEstado(EstadoProceso.TERMINADO);
+        p.establecerMensajeResultado("Completado con lock " + tipoLockDeOperacion(p.obtenerOperacion()));
+
+        if (p.obtenerOperacion() == TipoOperacion.ELIMINAR) {
+            eliminarElemento(archivoDestino);
+        }
+
+        liberarLock(archivoDestino, p);
+        desbloquearProcesosEnEspera(archivoDestino);
+        return;
     }
 
     private boolean asignarBloquesAArchivo(Archivo archivo) {
@@ -201,6 +283,17 @@ public class GestorSistemaArchivos {
             }
         }
         return null;
+    }
+
+    public String obtenerResumenLockArchivo(String nombreArchivo) {
+        Archivo archivo = buscarArchivoPorNombre(nombreArchivo);
+        if (archivo == null) {
+            return "Archivo no encontrado";
+        }
+
+        int enEspera = archivo.obtenerColaEspera().obtenerTamano();
+        String escritor = archivo.tieneLockEscrituraActivo() ? String.valueOf(archivo.obtenerProcesoEscritor()) : "-";
+        return "Lectores=" + archivo.obtenerLectoresActivos() + ", Escritor=" + escritor + ", Espera=" + enEspera;
     }
 
     public void eliminarElemento(ElementoSistema elemento) {
@@ -272,6 +365,151 @@ public class GestorSistemaArchivos {
         return contarBloquesLibres() >= bloquesNecesarios;
     }
 
+    private int estimarPosicionSolicitudCreacion() {
+        int bloqueLibre = disco.buscarBloqueLibre();
+        if (bloqueLibre == -1) {
+            return posicionCabezal;
+        }
+        return bloqueLibre;
+    }
+
+    private Proceso seleccionarSiguienteProcesoSegunPolitica() {
+        Lista<Proceso> pendientes = extraerPendientesALista();
+        int totalPendientes = pendientes.obtenerTamano();
+        if (totalPendientes == 0) {
+            return null;
+        }
+
+        int indiceSeleccionado;
+        switch (politicaActiva) {
+            case SSTF:
+                indiceSeleccionado = seleccionarIndiceSstf(pendientes);
+                break;
+            case SCAN:
+                indiceSeleccionado = seleccionarIndiceScan(pendientes);
+                break;
+            case C_SCAN:
+                indiceSeleccionado = seleccionarIndiceCscan(pendientes);
+                break;
+            case FIFO:
+            default:
+                indiceSeleccionado = 0;
+                break;
+        }
+
+        Proceso seleccionado = pendientes.obtener(indiceSeleccionado);
+        reencolarTodosExceptoIndice(pendientes, indiceSeleccionado);
+        return seleccionado;
+    }
+
+    private Lista<Proceso> extraerPendientesALista() {
+        Lista<Proceso> pendientes = new Lista<>();
+        while (!colaProcesos.estaVacia()) {
+            Proceso proceso = colaProcesos.desencolar();
+            if (proceso != null) {
+                pendientes.agregar(proceso);
+            }
+        }
+        return pendientes;
+    }
+
+    private void reencolarTodosExceptoIndice(Lista<Proceso> pendientes, int indiceOmitido) {
+        for (int i = 0; i < pendientes.obtenerTamano(); i++) {
+            if (i == indiceOmitido) {
+                continue;
+            }
+            colaProcesos.encolar(pendientes.obtener(i));
+        }
+    }
+
+    private int seleccionarIndiceSstf(Lista<Proceso> pendientes) {
+        int indiceSeleccionado = 0;
+        int mejorDistancia = Integer.MAX_VALUE;
+        int mejorPosicion = Integer.MAX_VALUE;
+
+        for (int i = 0; i < pendientes.obtenerTamano(); i++) {
+            int posicion = normalizarPosicion(pendientes.obtener(i).obtenerPosicionSolicitudDisco());
+            int distancia = Math.abs(posicion - posicionCabezal);
+            if (distancia < mejorDistancia || (distancia == mejorDistancia && posicion < mejorPosicion)) {
+                mejorDistancia = distancia;
+                mejorPosicion = posicion;
+                indiceSeleccionado = i;
+            }
+        }
+
+        return indiceSeleccionado;
+    }
+
+    private int seleccionarIndiceScan(Lista<Proceso> pendientes) {
+        int indiceEnDireccion = buscarIndiceMasCercanoEnDireccion(pendientes, direccionAscendente);
+        if (indiceEnDireccion != -1) {
+            return indiceEnDireccion;
+        }
+
+        direccionAscendente = !direccionAscendente;
+        return buscarIndiceMasCercanoEnDireccion(pendientes, direccionAscendente);
+    }
+
+    private int seleccionarIndiceCscan(Lista<Proceso> pendientes) {
+        int indiceEnDireccion = buscarIndiceMasCercanoEnDireccion(pendientes, direccionAscendente);
+        if (indiceEnDireccion != -1) {
+            return indiceEnDireccion;
+        }
+
+        if (direccionAscendente) {
+            desplazamientoCabezal += (maximoIndiceDisco - posicionCabezal);
+            desplazamientoCabezal += maximoIndiceDisco;
+            posicionCabezal = 0;
+        } else {
+            desplazamientoCabezal += posicionCabezal;
+            desplazamientoCabezal += maximoIndiceDisco;
+            posicionCabezal = maximoIndiceDisco;
+        }
+
+        return buscarIndiceMasCercanoEnDireccion(pendientes, direccionAscendente);
+    }
+
+    private int buscarIndiceMasCercanoEnDireccion(Lista<Proceso> pendientes, boolean direccionAscendente) {
+        int indiceSeleccionado = -1;
+        int mejorDistancia = Integer.MAX_VALUE;
+
+        for (int i = 0; i < pendientes.obtenerTamano(); i++) {
+            int posicion = normalizarPosicion(pendientes.obtener(i).obtenerPosicionSolicitudDisco());
+            int delta = posicion - posicionCabezal;
+
+            if (direccionAscendente && delta < 0) {
+                continue;
+            }
+            if (!direccionAscendente && delta > 0) {
+                continue;
+            }
+
+            int distancia = Math.abs(delta);
+            if (distancia < mejorDistancia) {
+                mejorDistancia = distancia;
+                indiceSeleccionado = i;
+            }
+        }
+
+        return indiceSeleccionado;
+    }
+
+    private void moverCabezalHasta(int nuevaPosicion) {
+        int destino = normalizarPosicion(nuevaPosicion);
+        desplazamientoCabezal += Math.abs(destino - posicionCabezal);
+        posicionCabezal = destino;
+    }
+
+    private int normalizarPosicion(int posicion) {
+        if (posicion < 0) {
+            return 0;
+        }
+        if (posicion > maximoIndiceDisco) {
+            return maximoIndiceDisco;
+        }
+        return posicion;
+    }
+
     private int contarBloquesLibres() {
         int libres = 0;
         for (int i = 0; i < disco.obtenerCantidadBloques(); i++) {
@@ -280,5 +518,62 @@ public class GestorSistemaArchivos {
             }
         }
         return libres;
+    }
+
+    private boolean intentarAdquirirLock(Archivo archivo, Proceso proceso) {
+        TipoOperacion operacion = proceso.obtenerOperacion();
+
+        if (operacion == TipoOperacion.LEER) {
+            if (archivo.tieneConflictoLectura()) {
+                return false;
+            }
+            archivo.tomarLockLectura();
+            return true;
+        }
+
+        if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
+            if (!archivo.puedeTomarLockEscritura()) {
+                return false;
+            }
+            archivo.tomarLockEscritura(proceso.obtenerId());
+            return true;
+        }
+
+        return false;
+    }
+
+    private void liberarLock(Archivo archivo, Proceso proceso) {
+        TipoOperacion operacion = proceso.obtenerOperacion();
+        if (operacion == TipoOperacion.LEER) {
+            archivo.liberarLockLectura();
+            return;
+        }
+
+        if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
+            archivo.liberarLockEscritura(proceso.obtenerId());
+        }
+    }
+
+    private void desbloquearProcesosEnEspera(Archivo archivo) {
+        Cola<Proceso> espera = archivo.obtenerColaEspera();
+        while (!espera.estaVacia()) {
+            Proceso procesoEnEspera = espera.desencolar();
+            if (procesoEnEspera == null) {
+                continue;
+            }
+            procesoEnEspera.establecerEstado(EstadoProceso.LISTO);
+            procesoEnEspera.establecerMensajeResultado("Reintentando operación tras liberar lock.");
+            colaProcesos.encolar(procesoEnEspera);
+        }
+    }
+
+    private String tipoLockDeOperacion(TipoOperacion operacion) {
+        if (operacion == TipoOperacion.LEER) {
+            return "compartido";
+        }
+        if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
+            return "exclusivo";
+        }
+        return "N/A";
     }
 }

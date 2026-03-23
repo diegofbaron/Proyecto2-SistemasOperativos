@@ -21,9 +21,16 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnCrear;
     private JButton btnRenombrar;
     private JButton btnEliminar;
+    private JComboBox<PoliticaPlanificacion> comboPolitica;
+    private JSpinner spinnerCabezalInicial;
+    private JCheckBox chkDireccionAscendente;
+    private JButton btnAplicarPlanificador;
+    private JLabel lblCabezalActual;
+    private JLabel lblDesplazamiento;
 
     public VentanaPrincipal() {
         gestor = new GestorSistemaArchivos(100); 
+        gestor.configurarPlanificador(PoliticaPlanificacion.FIFO, 50, true);
 
         setTitle("Simulador de Sistema de Archivos - Proyecto 2");
         setSize(1000, 700);
@@ -58,22 +65,38 @@ public class VentanaPrincipal extends JFrame {
         btnCrear = new JButton("Crear Archivo/Directorio");
         btnRenombrar = new JButton("Renombrar");
         btnEliminar = new JButton("Eliminar");
+        comboPolitica = new JComboBox<>(PoliticaPlanificacion.values());
+        spinnerCabezalInicial = new JSpinner(new SpinnerNumberModel(50, 0, gestor.obtenerDisco().obtenerCantidadBloques() - 1, 1));
+        chkDireccionAscendente = new JCheckBox("Dirección ↑", true);
+        btnAplicarPlanificador = new JButton("Aplicar Planificador");
+        lblCabezalActual = new JLabel();
+        lblDesplazamiento = new JLabel();
 
         panelControles.add(new JLabel("Modo:"));
         panelControles.add(comboModoUsuario);
         panelControles.add(btnCrear);
         panelControles.add(btnRenombrar);
         panelControles.add(btnEliminar);
+        panelControles.add(new JLabel("Política:"));
+        panelControles.add(comboPolitica);
+        panelControles.add(new JLabel("Cabezal inicial:"));
+        panelControles.add(spinnerCabezalInicial);
+        panelControles.add(chkDireccionAscendente);
+        panelControles.add(btnAplicarPlanificador);
+        panelControles.add(lblCabezalActual);
+        panelControles.add(lblDesplazamiento);
 
         add(panelControles, BorderLayout.SOUTH);
 
         btnCrear.addActionListener(e -> accionCrearElemento());
         btnRenombrar.addActionListener(e -> accionRenombrarElemento());
         btnEliminar.addActionListener(e -> accionEliminarElemento());
+        btnAplicarPlanificador.addActionListener(e -> accionAplicarPlanificador());
 
         actualizarArbol();
         actualizarDisco();
         actualizarTabla();
+        actualizarEstadoPlanificador();
     }
 
     private void accionCrearElemento() {
@@ -127,6 +150,7 @@ public class VentanaPrincipal extends JFrame {
         actualizarArbol(); 
         actualizarDisco();
         actualizarTabla();
+        actualizarEstadoPlanificador();
         expandirTodoElArbol(); 
     }
 
@@ -157,7 +181,17 @@ public class VentanaPrincipal extends JFrame {
         actualizarArbol();
         actualizarDisco();
         actualizarTabla();
+        actualizarEstadoPlanificador();
         expandirTodoElArbol();
+    }
+
+    private void accionAplicarPlanificador() {
+        PoliticaPlanificacion politica = (PoliticaPlanificacion) comboPolitica.getSelectedItem();
+        int posicionInicial = (Integer) spinnerCabezalInicial.getValue();
+        boolean direccionAsc = chkDireccionAscendente.isSelected();
+
+        gestor.configurarPlanificador(politica, posicionInicial, direccionAsc);
+        actualizarEstadoPlanificador();
     }
 
     private void accionEliminarElemento() {
@@ -186,8 +220,14 @@ public class VentanaPrincipal extends JFrame {
             actualizarArbol();
             actualizarDisco();
             actualizarTabla();
+            actualizarEstadoPlanificador();
             expandirTodoElArbol();
         }
+    }
+
+    private void actualizarEstadoPlanificador() {
+        lblCabezalActual.setText("Cabezal actual: " + gestor.obtenerPosicionCabezal());
+        lblDesplazamiento.setText("Desplazamiento: " + gestor.obtenerDesplazamientoCabezal());
     }
 
     private void actualizarArbol() {
