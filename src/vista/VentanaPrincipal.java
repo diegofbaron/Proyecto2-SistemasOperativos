@@ -32,6 +32,7 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnSimularFallo;
     private JButton btnRecuperarJournal;
     private JButton btnActualizarMonitoreo;
+    private JButton btnValidarPruebas;
     private JLabel lblPoliticaActiva;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
@@ -39,6 +40,7 @@ public class VentanaPrincipal extends JFrame {
     private JTextArea areaHistorial;
     private JTextArea areaLocks;
     private JTextArea areaJournal;
+    private JTextArea areaPruebas;
     private JTextArea areaChecklist;
     private JTextArea areaSeleccion;
     private JLabel lblUltimaActualizacion;
@@ -97,6 +99,7 @@ public class VentanaPrincipal extends JFrame {
         btnSimularFallo = new JButton("Simular Fallo: OFF");
         btnRecuperarJournal = new JButton("Recuperar Journal");
         btnActualizarMonitoreo = new JButton("Actualizar Monitoreo");
+        btnValidarPruebas = new JButton("Validar Pruebas");
         lblPoliticaActiva = new JLabel();
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
@@ -122,6 +125,7 @@ public class VentanaPrincipal extends JFrame {
         filaInferior.add(btnSimularFallo);
         filaInferior.add(btnRecuperarJournal);
         filaInferior.add(btnActualizarMonitoreo);
+        filaInferior.add(btnValidarPruebas);
         filaInferior.add(lblPoliticaActiva);
         filaInferior.add(lblCabezalActual);
         filaInferior.add(lblDesplazamiento);
@@ -143,6 +147,7 @@ public class VentanaPrincipal extends JFrame {
         btnSimularFallo.addActionListener(e -> accionToggleFallo());
         btnRecuperarJournal.addActionListener(e -> accionRecuperarJournal());
         btnActualizarMonitoreo.addActionListener(e -> refrescarVistaCompleta(false));
+        btnValidarPruebas.addActionListener(e -> accionValidarPruebas());
         arbolSistema.addTreeSelectionListener(e -> actualizarInfoSeleccionado());
 
         aplicarSesionActual();
@@ -250,6 +255,12 @@ public class VentanaPrincipal extends JFrame {
         JOptionPane.showMessageDialog(this, "Recuperación finalizada. Entradas procesadas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
     }
 
+    private void accionValidarPruebas() {
+        estructuras.Lista<String> reporte = gestor.generarReportePruebasRecomendadas();
+        areaPruebas.setText(textoDesdeLista(reporte, "Sin resultados de pruebas."));
+        JOptionPane.showMessageDialog(this, "Validación de pruebas recomendadas completada.", "Paso 11", JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private void accionGuardarEstado() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Guardar estado en JSON");
@@ -349,6 +360,7 @@ public class VentanaPrincipal extends JFrame {
         areaHistorial = crearAreaMonitoreo();
         areaLocks = crearAreaMonitoreo();
         areaJournal = crearAreaMonitoreo();
+        areaPruebas = crearAreaMonitoreo();
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Checklist", new JScrollPane(areaChecklist));
@@ -357,6 +369,7 @@ public class VentanaPrincipal extends JFrame {
         tabs.addTab("Historial", new JScrollPane(areaHistorial));
         tabs.addTab("Locks", new JScrollPane(areaLocks));
         tabs.addTab("Log", new JScrollPane(areaJournal));
+        tabs.addTab("Pruebas", new JScrollPane(areaPruebas));
         tabs.setPreferredSize(new Dimension(300, 0));
         return tabs;
     }
@@ -376,6 +389,7 @@ public class VentanaPrincipal extends JFrame {
         areaHistorial.setText(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(30), "No hay historial."));
         areaLocks.setText(textoDesdeLista(gestor.obtenerResumenLocksActivos(), "No hay locks activos."));
         areaJournal.setText(construirLogConsolidado());
+        areaPruebas.setText(textoDesdeLista(gestor.generarReportePruebasRecomendadas(), "Sin resultados de pruebas."));
         actualizarInfoSeleccionado();
     }
 
