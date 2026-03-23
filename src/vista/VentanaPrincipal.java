@@ -25,6 +25,13 @@ public class VentanaPrincipal extends JFrame {
     private JSpinner spinnerCabezalInicial;
     private JCheckBox chkDireccionAscendente;
     private JButton btnAplicarPlanificador;
+    private JTextField txtUsuario;
+    private JButton btnAplicarSesion;
+    private JButton btnGuardarEstado;
+    private JButton btnCargarEstado;
+    private JButton btnSimularFallo;
+    private JButton btnRecuperarJournal;
+    private JLabel lblPoliticaActiva;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
 
@@ -59,7 +66,9 @@ public class VentanaPrincipal extends JFrame {
 
         add(panelCentral, BorderLayout.CENTER);
 
-        JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 10));
+        JPanel panelControles = new JPanel(new GridLayout(2, 1, 0, 4));
+        JPanel filaSuperior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        JPanel filaInferior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         
         comboModoUsuario = new JComboBox<>(new String[]{"Modo Administrador", "Modo Usuario"});
         btnCrear = new JButton("Crear Archivo/Directorio");
@@ -69,22 +78,41 @@ public class VentanaPrincipal extends JFrame {
         spinnerCabezalInicial = new JSpinner(new SpinnerNumberModel(50, 0, gestor.obtenerDisco().obtenerCantidadBloques() - 1, 1));
         chkDireccionAscendente = new JCheckBox("Dirección ↑", true);
         btnAplicarPlanificador = new JButton("Aplicar Planificador");
+        txtUsuario = new JTextField("admin", 8);
+        btnAplicarSesion = new JButton("Aplicar Sesión");
+        btnGuardarEstado = new JButton("Guardar JSON");
+        btnCargarEstado = new JButton("Cargar JSON");
+        btnSimularFallo = new JButton("Simular Fallo: OFF");
+        btnRecuperarJournal = new JButton("Recuperar Journal");
+        lblPoliticaActiva = new JLabel();
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
 
-        panelControles.add(new JLabel("Modo:"));
-        panelControles.add(comboModoUsuario);
-        panelControles.add(btnCrear);
-        panelControles.add(btnRenombrar);
-        panelControles.add(btnEliminar);
-        panelControles.add(new JLabel("Política:"));
-        panelControles.add(comboPolitica);
-        panelControles.add(new JLabel("Cabezal inicial:"));
-        panelControles.add(spinnerCabezalInicial);
-        panelControles.add(chkDireccionAscendente);
-        panelControles.add(btnAplicarPlanificador);
-        panelControles.add(lblCabezalActual);
-        panelControles.add(lblDesplazamiento);
+        filaSuperior.add(new JLabel("Modo:"));
+        filaSuperior.add(comboModoUsuario);
+        filaSuperior.add(new JLabel("Usuario:"));
+        filaSuperior.add(txtUsuario);
+        filaSuperior.add(btnAplicarSesion);
+        filaSuperior.add(btnCrear);
+        filaSuperior.add(btnRenombrar);
+        filaSuperior.add(btnEliminar);
+        filaSuperior.add(btnGuardarEstado);
+        filaSuperior.add(btnCargarEstado);
+
+        filaInferior.add(new JLabel("Política:"));
+        filaInferior.add(comboPolitica);
+        filaInferior.add(new JLabel("Cabezal inicial:"));
+        filaInferior.add(spinnerCabezalInicial);
+        filaInferior.add(chkDireccionAscendente);
+        filaInferior.add(btnAplicarPlanificador);
+        filaInferior.add(btnSimularFallo);
+        filaInferior.add(btnRecuperarJournal);
+        filaInferior.add(lblPoliticaActiva);
+        filaInferior.add(lblCabezalActual);
+        filaInferior.add(lblDesplazamiento);
+
+        panelControles.add(filaSuperior);
+        panelControles.add(filaInferior);
 
         add(panelControles, BorderLayout.SOUTH);
 
@@ -92,10 +120,17 @@ public class VentanaPrincipal extends JFrame {
         btnRenombrar.addActionListener(e -> accionRenombrarElemento());
         btnEliminar.addActionListener(e -> accionEliminarElemento());
         btnAplicarPlanificador.addActionListener(e -> accionAplicarPlanificador());
+        btnAplicarSesion.addActionListener(e -> aplicarSesionActual());
+        comboModoUsuario.addActionListener(e -> aplicarSesionActual());
+        btnGuardarEstado.addActionListener(e -> accionGuardarEstado());
+        btnCargarEstado.addActionListener(e -> accionCargarEstado());
+        btnSimularFallo.addActionListener(e -> accionToggleFallo());
+        btnRecuperarJournal.addActionListener(e -> accionRecuperarJournal());
 
         actualizarArbol();
         actualizarDisco();
         actualizarTabla();
+        aplicarSesionActual();
         actualizarEstadoPlanificador();
     }
 
@@ -133,13 +168,15 @@ public class VentanaPrincipal extends JFrame {
             String tamanoStr = JOptionPane.showInputDialog(this, "Tamaño en bloques:");
             try {
                 int tamano = Integer.parseInt(tamanoStr);
-                error = gestor.crearArchivo(nombre, "admin", directorioPadre, tamano);
+                int visibilidad = JOptionPane.showConfirmDialog(this, "¿Archivo público?", "Visibilidad", JOptionPane.YES_NO_OPTION);
+                boolean publico = visibilidad == JOptionPane.YES_OPTION;
+                error = gestor.crearArchivo(nombre, txtUsuario.getText(), directorioPadre, tamano, publico);
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this, "El tamaño debe ser un entero positivo.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
         } else {
-            error = gestor.crearDirectorio(nombre, "admin", directorioPadre);
+            error = gestor.crearDirectorio(nombre, txtUsuario.getText(), directorioPadre);
         }
 
         if (error != null) {
@@ -194,6 +231,75 @@ public class VentanaPrincipal extends JFrame {
         actualizarEstadoPlanificador();
     }
 
+    private void accionToggleFallo() {
+        boolean activar = !gestor.estaSimulacionFalloActiva();
+        gestor.configurarSimulacionFallo(activar);
+        actualizarEstadoPlanificador();
+    }
+
+    private void accionRecuperarJournal() {
+        int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
+        actualizarArbol();
+        actualizarDisco();
+        actualizarTabla();
+        actualizarEstadoPlanificador();
+        expandirTodoElArbol();
+        JOptionPane.showMessageDialog(this, "Recuperación finalizada. Entradas procesadas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void accionGuardarEstado() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Guardar estado en JSON");
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        String error = gestor.guardarEstadoEnJson(chooser.getSelectedFile().getAbsolutePath());
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        JOptionPane.showMessageDialog(this, "Estado guardado correctamente.", "Guardar JSON", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void accionCargarEstado() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Cargar estado desde JSON");
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        String error = gestor.cargarEstadoDesdeJson(chooser.getSelectedFile().getAbsolutePath());
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        txtUsuario.setText(gestor.obtenerUsuarioActual());
+        comboModoUsuario.setSelectedIndex(gestor.esModoAdministrador() ? 0 : 1);
+        comboPolitica.setSelectedItem(gestor.obtenerPoliticaActiva());
+        spinnerCabezalInicial.setValue(gestor.obtenerPosicionCabezal());
+        chkDireccionAscendente.setSelected(gestor.esDireccionAscendente());
+
+        actualizarArbol();
+        actualizarDisco();
+        actualizarTabla();
+        actualizarEstadoPlanificador();
+        expandirTodoElArbol();
+
+        int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
+        if (recuperadas > 0) {
+            actualizarArbol();
+            actualizarDisco();
+            actualizarTabla();
+            actualizarEstadoPlanificador();
+            expandirTodoElArbol();
+            JOptionPane.showMessageDialog(this, "Se recuperaron " + recuperadas + " transacciones pendientes del journal.", "Recuperación automática", JOptionPane.INFORMATION_MESSAGE);
+        }
+
+        JOptionPane.showMessageDialog(this, "Estado cargado correctamente.", "Cargar JSON", JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private void accionEliminarElemento() {
         if (comboModoUsuario.getSelectedIndex() != 0) {
             JOptionPane.showMessageDialog(this, "Solo los administradores pueden eliminar elementos.", "Acceso Denegado", JOptionPane.ERROR_MESSAGE);
@@ -216,7 +322,11 @@ public class VentanaPrincipal extends JFrame {
         int confirmacion = JOptionPane.showConfirmDialog(this, "¿Estás seguro de que deseas eliminar '" + elemento.obtenerNombre() + "'?", "Confirmar Eliminación", JOptionPane.YES_NO_OPTION);
         
         if (confirmacion == JOptionPane.YES_OPTION) {
-            gestor.eliminarElemento(elemento);
+            String error = gestor.eliminarElementoSeguro(elemento);
+            if (error != null) {
+                JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
             actualizarArbol();
             actualizarDisco();
             actualizarTabla();
@@ -225,9 +335,18 @@ public class VentanaPrincipal extends JFrame {
         }
     }
 
+    private void aplicarSesionActual() {
+        boolean modoAdmin = comboModoUsuario.getSelectedIndex() == 0;
+        String usuario = txtUsuario.getText();
+        gestor.configurarSesion(usuario, modoAdmin);
+        txtUsuario.setText(gestor.obtenerUsuarioActual());
+    }
+
     private void actualizarEstadoPlanificador() {
+        lblPoliticaActiva.setText("Política activa: " + gestor.obtenerPoliticaActiva());
         lblCabezalActual.setText("Cabezal actual: " + gestor.obtenerPosicionCabezal());
         lblDesplazamiento.setText("Desplazamiento: " + gestor.obtenerDesplazamientoCabezal());
+        btnSimularFallo.setText(gestor.estaSimulacionFalloActiva() ? "Simular Fallo: ON" : "Simular Fallo: OFF");
     }
 
     private void actualizarArbol() {

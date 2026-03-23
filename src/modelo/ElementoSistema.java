@@ -8,11 +8,13 @@ public abstract class ElementoSistema {
     protected String nombre;
     protected String dueno;
     protected Directorio padre;
+    protected boolean publico;
 
     public ElementoSistema(String nombre, String dueno, Directorio padre) {
         this.nombre = nombre;
         this.dueno = dueno;
         this.padre = padre;
+        this.publico = false;
     }
 
     public String obtenerNombre() {
@@ -29,6 +31,14 @@ public abstract class ElementoSistema {
 
     public Directorio obtenerPadre() {
         return padre;
+    }
+
+    public boolean esPublico() {
+        return publico;
+    }
+
+    public void establecerPublico(boolean publico) {
+        this.publico = publico;
     }
 
     public void establecerPadre(Directorio padre) {
