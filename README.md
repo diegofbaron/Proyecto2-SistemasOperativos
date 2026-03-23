@@ -12,3 +12,5 @@
 - Documento: [docs/paso-04-planificador-disco.md](docs/paso-04-planificador-disco.md)
 - Paso 5 (Concurrencia y locks): completado.
 - Documento: [docs/paso-05-concurrencia-locks.md](docs/paso-05-concurrencia-locks.md)
+- Paso 6 (Permisos y roles): completado.
+- Documento: [docs/paso-06-permisos-roles.md](docs/paso-06-permisos-roles.md)

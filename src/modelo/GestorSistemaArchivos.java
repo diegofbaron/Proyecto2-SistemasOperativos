@@ -20,6 +20,8 @@ public class GestorSistemaArchivos {
     private int desplazamientoCabezal;
     private boolean direccionAscendente;
     private int maximoIndiceDisco;
+    private String usuarioActual;
+    private boolean modoAdministrador;
 
     public GestorSistemaArchivos(int cantidadBloquesDisco) {
         this.disco = new DiscoVirtual(cantidadBloquesDisco);
@@ -33,6 +35,8 @@ public class GestorSistemaArchivos {
         this.desplazamientoCabezal = 0;
         this.direccionAscendente = true;
         this.maximoIndiceDisco = Math.max(0, cantidadBloquesDisco - 1);
+        this.usuarioActual = "admin";
+        this.modoAdministrador = true;
     }
 
     public Directorio obtenerRaiz() {
@@ -80,13 +84,39 @@ public class GestorSistemaArchivos {
         this.desplazamientoCabezal = 0;
     }
 
+    public void configurarSesion(String usuario, boolean modoAdministrador) {
+        String usuarioNormalizado = usuario == null ? "" : usuario.trim();
+        if (usuarioNormalizado.isEmpty()) {
+            usuarioNormalizado = modoAdministrador ? "admin" : "usuario";
+        }
+        this.usuarioActual = usuarioNormalizado;
+        this.modoAdministrador = modoAdministrador;
+    }
+
+    public String obtenerUsuarioActual() {
+        return usuarioActual;
+    }
+
+    public boolean esModoAdministrador() {
+        return modoAdministrador;
+    }
+
     public String crearArchivo(String nombre, String dueno, Directorio padre, int tamano) {
+        if (!modoAdministrador) {
+            return "Solo el administrador puede crear archivos.";
+        }
+
         String errorValidacion = validarCreacion(nombre, padre, tamano);
         if (errorValidacion != null) {
             return errorValidacion;
         }
 
-        Proceso p = solicitarCreacionArchivo(nombre.trim(), dueno, padre, tamano);
+        String propietario = normalizarNombre(dueno);
+        if (propietario == null) {
+            propietario = usuarioActual;
+        }
+
+        Proceso p = solicitarCreacionArchivo(nombre.trim(), propietario, padre, tamano);
         despacharSiguienteProceso();
 
         if (p.obtenerEstado() == EstadoProceso.BLOQUEADO) {
@@ -96,7 +126,24 @@ public class GestorSistemaArchivos {
         return null;
     }
 
+    public String crearArchivo(String nombre, String dueno, Directorio padre, int tamano, boolean publico) {
+        String error = crearArchivo(nombre, dueno, padre, tamano);
+        if (error != null) {
+            return error;
+        }
+
+        Archivo creado = obtenerUltimoArchivoCreado();
+        if (creado != null) {
+            creado.establecerPublico(publico);
+        }
+        return null;
+    }
+
     public String crearDirectorio(String nombre, String dueno, Directorio padre) {
+        if (!modoAdministrador) {
+            return "Solo el administrador puede crear directorios.";
+        }
+
         String nombreNormalizado = normalizarNombre(nombre);
         if (nombreNormalizado == null) {
             return "El nombre no puede estar vacío.";
@@ -108,7 +155,12 @@ public class GestorSistemaArchivos {
             return "Ya existe un elemento con ese nombre en el directorio seleccionado.";
         }
 
-        Directorio nuevoDir = new Directorio(nombreNormalizado, dueno, padre);
+        String propietario = normalizarNombre(dueno);
+        if (propietario == null) {
+            propietario = usuarioActual;
+        }
+
+        Directorio nuevoDir = new Directorio(nombreNormalizado, propietario, padre);
         padre.agregarHijo(nuevoDir);
         return null;
     }
@@ -121,6 +173,11 @@ public class GestorSistemaArchivos {
         Archivo archivo = buscarArchivoPorNombre(nombreArchivo);
         if (archivo == null) {
             return "No existe un archivo con ese nombre.";
+        }
+
+        String errorPermiso = validarPermisoOperacionArchivo(archivo, operacion);
+        if (errorPermiso != null) {
+            return errorPermiso;
         }
 
         int posicionSolicitud = archivo.obtenerBloqueInicial() >= 0 ? archivo.obtenerBloqueInicial() : estimarPosicionSolicitudCreacion();
@@ -137,6 +194,10 @@ public class GestorSistemaArchivos {
     }
 
     public String renombrarElemento(ElementoSistema elemento, String nuevoNombre) {
+        if (!modoAdministrador) {
+            return "Solo el administrador puede renombrar elementos.";
+        }
+
         if (elemento == null) {
             return "Debes seleccionar un elemento para renombrar.";
         }
@@ -296,6 +357,31 @@ public class GestorSistemaArchivos {
         return "Lectores=" + archivo.obtenerLectoresActivos() + ", Escritor=" + escritor + ", Espera=" + enEspera;
     }
 
+    public String cambiarVisibilidadArchivo(String nombreArchivo, boolean publico) {
+        if (!modoAdministrador) {
+            return "Solo el administrador puede cambiar visibilidad de archivos.";
+        }
+
+        Archivo archivo = buscarArchivoPorNombre(nombreArchivo);
+        if (archivo == null) {
+            return "Archivo no encontrado";
+        }
+
+        archivo.establecerPublico(publico);
+        return null;
+    }
+
+    public String eliminarElementoSeguro(ElementoSistema elemento) {
+        if (!modoAdministrador) {
+            return "Solo el administrador puede eliminar elementos.";
+        }
+        if (elemento == null) {
+            return "Debes seleccionar un elemento para eliminar.";
+        }
+        eliminarElemento(elemento);
+        return null;
+    }
+
     public void eliminarElemento(ElementoSistema elemento) {
         if (elemento instanceof Archivo) {
             Archivo a = (Archivo) elemento;
@@ -335,6 +421,29 @@ public class GestorSistemaArchivos {
             return "Espacio insuficiente en el disco para crear el archivo.";
         }
         return null;
+    }
+
+    private String validarPermisoOperacionArchivo(Archivo archivo, TipoOperacion operacion) {
+        if (modoAdministrador) {
+            return null;
+        }
+
+        boolean esDueno = archivo.obtenerDueno().equalsIgnoreCase(usuarioActual);
+        if (operacion == TipoOperacion.LEER) {
+            if (esDueno || archivo.esPublico()) {
+                return null;
+            }
+            return "En modo usuario solo puedes leer archivos propios o públicos.";
+        }
+
+        if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
+            if (esDueno) {
+                return null;
+            }
+            return "En modo usuario solo puedes modificar o eliminar archivos propios.";
+        }
+
+        return "Operación no permitida para el modo actual.";
     }
 
     private String normalizarNombre(String nombre) {
@@ -518,6 +627,16 @@ public class GestorSistemaArchivos {
             }
         }
         return libres;
+    }
+
+    private Archivo obtenerUltimoArchivoCreado() {
+        for (int i = historialProcesos.obtenerTamano() - 1; i >= 0; i--) {
+            Proceso proceso = historialProcesos.obtener(i);
+            if (proceso.obtenerOperacion() == TipoOperacion.CREAR) {
+                return proceso.obtenerArchivoDestino();
+            }
+        }
+        return null;
     }
 
     private boolean intentarAdquirirLock(Archivo archivo, Proceso proceso) {

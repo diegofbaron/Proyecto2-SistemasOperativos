@@ -25,6 +25,8 @@ public class VentanaPrincipal extends JFrame {
     private JSpinner spinnerCabezalInicial;
     private JCheckBox chkDireccionAscendente;
     private JButton btnAplicarPlanificador;
+    private JTextField txtUsuario;
+    private JButton btnAplicarSesion;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
 
@@ -69,11 +71,16 @@ public class VentanaPrincipal extends JFrame {
         spinnerCabezalInicial = new JSpinner(new SpinnerNumberModel(50, 0, gestor.obtenerDisco().obtenerCantidadBloques() - 1, 1));
         chkDireccionAscendente = new JCheckBox("Dirección ↑", true);
         btnAplicarPlanificador = new JButton("Aplicar Planificador");
+        txtUsuario = new JTextField("admin", 8);
+        btnAplicarSesion = new JButton("Aplicar Sesión");
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
 
         panelControles.add(new JLabel("Modo:"));
         panelControles.add(comboModoUsuario);
+        panelControles.add(new JLabel("Usuario:"));
+        panelControles.add(txtUsuario);
+        panelControles.add(btnAplicarSesion);
         panelControles.add(btnCrear);
         panelControles.add(btnRenombrar);
         panelControles.add(btnEliminar);
@@ -92,10 +99,13 @@ public class VentanaPrincipal extends JFrame {
         btnRenombrar.addActionListener(e -> accionRenombrarElemento());
         btnEliminar.addActionListener(e -> accionEliminarElemento());
         btnAplicarPlanificador.addActionListener(e -> accionAplicarPlanificador());
+        btnAplicarSesion.addActionListener(e -> aplicarSesionActual());
+        comboModoUsuario.addActionListener(e -> aplicarSesionActual());
 
         actualizarArbol();
         actualizarDisco();
         actualizarTabla();
+        aplicarSesionActual();
         actualizarEstadoPlanificador();
     }
 
@@ -133,13 +143,15 @@ public class VentanaPrincipal extends JFrame {
             String tamanoStr = JOptionPane.showInputDialog(this, "Tamaño en bloques:");
             try {
                 int tamano = Integer.parseInt(tamanoStr);
-                error = gestor.crearArchivo(nombre, "admin", directorioPadre, tamano);
+                int visibilidad = JOptionPane.showConfirmDialog(this, "¿Archivo público?", "Visibilidad", JOptionPane.YES_NO_OPTION);
+                boolean publico = visibilidad == JOptionPane.YES_OPTION;
+                error = gestor.crearArchivo(nombre, txtUsuario.getText(), directorioPadre, tamano, publico);
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this, "El tamaño debe ser un entero positivo.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
         } else {
-            error = gestor.crearDirectorio(nombre, "admin", directorioPadre);
+            error = gestor.crearDirectorio(nombre, txtUsuario.getText(), directorioPadre);
         }
 
         if (error != null) {
@@ -216,13 +228,24 @@ public class VentanaPrincipal extends JFrame {
         int confirmacion = JOptionPane.showConfirmDialog(this, "¿Estás seguro de que deseas eliminar '" + elemento.obtenerNombre() + "'?", "Confirmar Eliminación", JOptionPane.YES_NO_OPTION);
         
         if (confirmacion == JOptionPane.YES_OPTION) {
-            gestor.eliminarElemento(elemento);
+            String error = gestor.eliminarElementoSeguro(elemento);
+            if (error != null) {
+                JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
             actualizarArbol();
             actualizarDisco();
             actualizarTabla();
             actualizarEstadoPlanificador();
             expandirTodoElArbol();
         }
+    }
+
+    private void aplicarSesionActual() {
+        boolean modoAdmin = comboModoUsuario.getSelectedIndex() == 0;
+        String usuario = txtUsuario.getText();
+        gestor.configurarSesion(usuario, modoAdmin);
+        txtUsuario.setText(gestor.obtenerUsuarioActual());
     }
 
     private void actualizarEstadoPlanificador() {
