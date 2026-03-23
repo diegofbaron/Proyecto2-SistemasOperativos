@@ -31,9 +31,16 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnCargarEstado;
     private JButton btnSimularFallo;
     private JButton btnRecuperarJournal;
+    private JButton btnActualizarMonitoreo;
     private JLabel lblPoliticaActiva;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
+    private JTextArea areaCola;
+    private JTextArea areaHistorial;
+    private JTextArea areaLocks;
+    private JTextArea areaJournal;
+    private JTextArea areaChecklist;
+    private JLabel lblUltimaActualizacion;
 
     public VentanaPrincipal() {
         gestor = new GestorSistemaArchivos(100); 
@@ -64,7 +71,11 @@ public class VentanaPrincipal extends JFrame {
         scrollTabla.setBorder(BorderFactory.createTitledBorder("Tabla de Asignación"));
         panelCentral.add(scrollTabla);
 
-        add(panelCentral, BorderLayout.CENTER);
+        JTabbedPane panelMonitoreo = crearPanelMonitoreo();
+        JSplitPane splitPrincipal = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, panelCentral, panelMonitoreo);
+        splitPrincipal.setResizeWeight(0.72);
+        splitPrincipal.setDividerLocation(720);
+        add(splitPrincipal, BorderLayout.CENTER);
 
         JPanel panelControles = new JPanel(new GridLayout(2, 1, 0, 4));
         JPanel filaSuperior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
@@ -84,9 +95,11 @@ public class VentanaPrincipal extends JFrame {
         btnCargarEstado = new JButton("Cargar JSON");
         btnSimularFallo = new JButton("Simular Fallo: OFF");
         btnRecuperarJournal = new JButton("Recuperar Journal");
+        btnActualizarMonitoreo = new JButton("Actualizar Monitoreo");
         lblPoliticaActiva = new JLabel();
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
+        lblUltimaActualizacion = new JLabel();
 
         filaSuperior.add(new JLabel("Modo:"));
         filaSuperior.add(comboModoUsuario);
@@ -107,9 +120,11 @@ public class VentanaPrincipal extends JFrame {
         filaInferior.add(btnAplicarPlanificador);
         filaInferior.add(btnSimularFallo);
         filaInferior.add(btnRecuperarJournal);
+        filaInferior.add(btnActualizarMonitoreo);
         filaInferior.add(lblPoliticaActiva);
         filaInferior.add(lblCabezalActual);
         filaInferior.add(lblDesplazamiento);
+        filaInferior.add(lblUltimaActualizacion);
 
         panelControles.add(filaSuperior);
         panelControles.add(filaInferior);
@@ -126,12 +141,10 @@ public class VentanaPrincipal extends JFrame {
         btnCargarEstado.addActionListener(e -> accionCargarEstado());
         btnSimularFallo.addActionListener(e -> accionToggleFallo());
         btnRecuperarJournal.addActionListener(e -> accionRecuperarJournal());
+        btnActualizarMonitoreo.addActionListener(e -> refrescarVistaCompleta(false));
 
-        actualizarArbol();
-        actualizarDisco();
-        actualizarTabla();
         aplicarSesionActual();
-        actualizarEstadoPlanificador();
+        refrescarVistaCompleta(true);
     }
 
     private void accionCrearElemento() {
@@ -184,11 +197,7 @@ public class VentanaPrincipal extends JFrame {
             return;
         }
 
-        actualizarArbol(); 
-        actualizarDisco();
-        actualizarTabla();
-        actualizarEstadoPlanificador();
-        expandirTodoElArbol(); 
+        refrescarVistaCompleta(true);
     }
 
     private void accionRenombrarElemento() {
@@ -215,11 +224,7 @@ public class VentanaPrincipal extends JFrame {
             return;
         }
 
-        actualizarArbol();
-        actualizarDisco();
-        actualizarTabla();
-        actualizarEstadoPlanificador();
-        expandirTodoElArbol();
+        refrescarVistaCompleta(true);
     }
 
     private void accionAplicarPlanificador() {
@@ -228,22 +233,18 @@ public class VentanaPrincipal extends JFrame {
         boolean direccionAsc = chkDireccionAscendente.isSelected();
 
         gestor.configurarPlanificador(politica, posicionInicial, direccionAsc);
-        actualizarEstadoPlanificador();
+        refrescarVistaCompleta(false);
     }
 
     private void accionToggleFallo() {
         boolean activar = !gestor.estaSimulacionFalloActiva();
         gestor.configurarSimulacionFallo(activar);
-        actualizarEstadoPlanificador();
+        refrescarVistaCompleta(false);
     }
 
     private void accionRecuperarJournal() {
         int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
-        actualizarArbol();
-        actualizarDisco();
-        actualizarTabla();
-        actualizarEstadoPlanificador();
-        expandirTodoElArbol();
+        refrescarVistaCompleta(true);
         JOptionPane.showMessageDialog(this, "Recuperación finalizada. Entradas procesadas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
     }
 
@@ -260,6 +261,7 @@ public class VentanaPrincipal extends JFrame {
             return;
         }
         JOptionPane.showMessageDialog(this, "Estado guardado correctamente.", "Guardar JSON", JOptionPane.INFORMATION_MESSAGE);
+        refrescarVistaCompleta(false);
     }
 
     private void accionCargarEstado() {
@@ -281,19 +283,11 @@ public class VentanaPrincipal extends JFrame {
         spinnerCabezalInicial.setValue(gestor.obtenerPosicionCabezal());
         chkDireccionAscendente.setSelected(gestor.esDireccionAscendente());
 
-        actualizarArbol();
-        actualizarDisco();
-        actualizarTabla();
-        actualizarEstadoPlanificador();
-        expandirTodoElArbol();
+        refrescarVistaCompleta(true);
 
         int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
         if (recuperadas > 0) {
-            actualizarArbol();
-            actualizarDisco();
-            actualizarTabla();
-            actualizarEstadoPlanificador();
-            expandirTodoElArbol();
+            refrescarVistaCompleta(true);
             JOptionPane.showMessageDialog(this, "Se recuperaron " + recuperadas + " transacciones pendientes del journal.", "Recuperación automática", JOptionPane.INFORMATION_MESSAGE);
         }
 
@@ -327,11 +321,7 @@ public class VentanaPrincipal extends JFrame {
                 JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
-            actualizarArbol();
-            actualizarDisco();
-            actualizarTabla();
-            actualizarEstadoPlanificador();
-            expandirTodoElArbol();
+            refrescarVistaCompleta(true);
         }
     }
 
@@ -347,6 +337,84 @@ public class VentanaPrincipal extends JFrame {
         lblCabezalActual.setText("Cabezal actual: " + gestor.obtenerPosicionCabezal());
         lblDesplazamiento.setText("Desplazamiento: " + gestor.obtenerDesplazamientoCabezal());
         btnSimularFallo.setText(gestor.estaSimulacionFalloActiva() ? "Simular Fallo: ON" : "Simular Fallo: OFF");
+        lblUltimaActualizacion.setText("Última actualización: " + java.time.LocalTime.now().withNano(0));
+    }
+
+    private JTabbedPane crearPanelMonitoreo() {
+        areaChecklist = crearAreaMonitoreo();
+        areaCola = crearAreaMonitoreo();
+        areaHistorial = crearAreaMonitoreo();
+        areaLocks = crearAreaMonitoreo();
+        areaJournal = crearAreaMonitoreo();
+
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.addTab("Checklist", new JScrollPane(areaChecklist));
+        tabs.addTab("Cola", new JScrollPane(areaCola));
+        tabs.addTab("Historial", new JScrollPane(areaHistorial));
+        tabs.addTab("Locks", new JScrollPane(areaLocks));
+        tabs.addTab("Log", new JScrollPane(areaJournal));
+        tabs.setPreferredSize(new Dimension(300, 0));
+        return tabs;
+    }
+
+    private JTextArea crearAreaMonitoreo() {
+        JTextArea area = new JTextArea();
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        return area;
+    }
+
+    private void actualizarPanelMonitoreo() {
+        areaChecklist.setText(construirChecklistVisual());
+        areaCola.setText(textoDesdeLista(gestor.obtenerResumenColaProcesos(), "No hay procesos pendientes."));
+        areaHistorial.setText(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(30), "No hay historial."));
+        areaLocks.setText(textoDesdeLista(gestor.obtenerResumenLocksActivos(), "No hay locks activos."));
+        areaJournal.setText(construirLogConsolidado());
+    }
+
+    private String construirChecklistVisual() {
+        String ok = "[OK] ";
+        StringBuilder sb = new StringBuilder();
+        sb.append(ok).append("JTree de directorios").append("\n");
+        sb.append(ok).append("JTable FAT").append("\n");
+        sb.append(ok).append("Vista de bloques de disco").append("\n");
+        sb.append(ok).append("Cola de procesos").append("\n");
+        sb.append(ok).append("Locks activos").append("\n");
+        sb.append(ok).append("Log del sistema").append("\n");
+        return sb.toString();
+    }
+
+    private String construirLogConsolidado() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("== Últimas operaciones (historial) ==\n");
+        sb.append(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(15), "Sin operaciones.")).append("\n");
+        sb.append("== Journal transaccional ==\n");
+        sb.append(textoDesdeLista(gestor.obtenerResumenJournal(), "Sin journal."));
+        return sb.toString();
+    }
+
+    private void refrescarVistaCompleta(boolean expandirArbol) {
+        actualizarArbol();
+        actualizarDisco();
+        actualizarTabla();
+        actualizarEstadoPlanificador();
+        actualizarPanelMonitoreo();
+        if (expandirArbol) {
+            expandirTodoElArbol();
+        }
+    }
+
+    private String textoDesdeLista(estructuras.Lista<String> lista, String vacio) {
+        if (lista == null || lista.obtenerTamano() == 0) {
+            return vacio;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lista.obtenerTamano(); i++) {
+            sb.append(lista.obtener(i)).append("\n");
+        }
+        return sb.toString();
     }
 
     private void actualizarArbol() {

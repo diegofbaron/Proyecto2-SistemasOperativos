@@ -38,4 +38,8 @@ public class Cola<T> {
     public int obtenerTamano() {
         return lista.obtenerTamano();
     }
+
+    public T obtener(int indice) {
+        return lista.obtener(indice);
+    }
 }
