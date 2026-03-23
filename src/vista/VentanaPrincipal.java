@@ -21,6 +21,7 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnCrear;
     private JButton btnRenombrar;
     private JButton btnEliminar;
+    private JButton btnSolicitarProceso;
     private JComboBox<PoliticaPlanificacion> comboPolitica;
     private JSpinner spinnerCabezalInicial;
     private JCheckBox chkDireccionAscendente;
@@ -32,6 +33,7 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnSimularFallo;
     private JButton btnRecuperarJournal;
     private JButton btnActualizarMonitoreo;
+    private JButton btnValidarPruebas;
     private JLabel lblPoliticaActiva;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
@@ -39,7 +41,9 @@ public class VentanaPrincipal extends JFrame {
     private JTextArea areaHistorial;
     private JTextArea areaLocks;
     private JTextArea areaJournal;
+    private JTextArea areaPruebas;
     private JTextArea areaChecklist;
+    private JTextArea areaSeleccion;
     private JLabel lblUltimaActualizacion;
 
     public VentanaPrincipal() {
@@ -85,6 +89,7 @@ public class VentanaPrincipal extends JFrame {
         btnCrear = new JButton("Crear Archivo/Directorio");
         btnRenombrar = new JButton("Renombrar");
         btnEliminar = new JButton("Eliminar");
+        btnSolicitarProceso = new JButton("Solicitar E/S");
         comboPolitica = new JComboBox<>(PoliticaPlanificacion.values());
         spinnerCabezalInicial = new JSpinner(new SpinnerNumberModel(50, 0, gestor.obtenerDisco().obtenerCantidadBloques() - 1, 1));
         chkDireccionAscendente = new JCheckBox("Dirección ↑", true);
@@ -96,6 +101,7 @@ public class VentanaPrincipal extends JFrame {
         btnSimularFallo = new JButton("Simular Fallo: OFF");
         btnRecuperarJournal = new JButton("Recuperar Journal");
         btnActualizarMonitoreo = new JButton("Actualizar Monitoreo");
+        btnValidarPruebas = new JButton("Validar Pruebas");
         lblPoliticaActiva = new JLabel();
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
@@ -109,6 +115,7 @@ public class VentanaPrincipal extends JFrame {
         filaSuperior.add(btnCrear);
         filaSuperior.add(btnRenombrar);
         filaSuperior.add(btnEliminar);
+        filaSuperior.add(btnSolicitarProceso);
         filaSuperior.add(btnGuardarEstado);
         filaSuperior.add(btnCargarEstado);
 
@@ -121,6 +128,7 @@ public class VentanaPrincipal extends JFrame {
         filaInferior.add(btnSimularFallo);
         filaInferior.add(btnRecuperarJournal);
         filaInferior.add(btnActualizarMonitoreo);
+        filaInferior.add(btnValidarPruebas);
         filaInferior.add(lblPoliticaActiva);
         filaInferior.add(lblCabezalActual);
         filaInferior.add(lblDesplazamiento);
@@ -134,6 +142,7 @@ public class VentanaPrincipal extends JFrame {
         btnCrear.addActionListener(e -> accionCrearElemento());
         btnRenombrar.addActionListener(e -> accionRenombrarElemento());
         btnEliminar.addActionListener(e -> accionEliminarElemento());
+        btnSolicitarProceso.addActionListener(e -> accionSolicitarProceso());
         btnAplicarPlanificador.addActionListener(e -> accionAplicarPlanificador());
         btnAplicarSesion.addActionListener(e -> aplicarSesionActual());
         comboModoUsuario.addActionListener(e -> aplicarSesionActual());
@@ -142,6 +151,8 @@ public class VentanaPrincipal extends JFrame {
         btnSimularFallo.addActionListener(e -> accionToggleFallo());
         btnRecuperarJournal.addActionListener(e -> accionRecuperarJournal());
         btnActualizarMonitoreo.addActionListener(e -> refrescarVistaCompleta(false));
+        btnValidarPruebas.addActionListener(e -> accionValidarPruebas());
+        arbolSistema.addTreeSelectionListener(e -> actualizarInfoSeleccionado());
 
         aplicarSesionActual();
         refrescarVistaCompleta(true);
@@ -248,6 +259,12 @@ public class VentanaPrincipal extends JFrame {
         JOptionPane.showMessageDialog(this, "Recuperación finalizada. Entradas procesadas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
     }
 
+    private void accionValidarPruebas() {
+        estructuras.Lista<String> reporte = gestor.generarReportePruebasRecomendadas();
+        areaPruebas.setText(textoDesdeLista(reporte, "Sin resultados de pruebas."));
+        JOptionPane.showMessageDialog(this, "Validación de pruebas recomendadas completada.", "Paso 11", JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private void accionGuardarEstado() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Guardar estado en JSON");
@@ -325,6 +342,53 @@ public class VentanaPrincipal extends JFrame {
         }
     }
 
+    private void accionSolicitarProceso() {
+        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodoSeleccionado == null) {
+            JOptionPane.showMessageDialog(this, "Selecciona un archivo para crear la solicitud de E/S.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Object userObject = nodoSeleccionado.getUserObject();
+        if (!(userObject instanceof Archivo)) {
+            JOptionPane.showMessageDialog(this, "La solicitud de E/S debe apuntar a un archivo.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        boolean modoAdmin = comboModoUsuario.getSelectedIndex() == 0;
+        TipoOperacion operacion;
+        if (modoAdmin) {
+            TipoOperacion[] opciones = {TipoOperacion.LEER, TipoOperacion.ACTUALIZAR, TipoOperacion.ELIMINAR};
+            operacion = (TipoOperacion) JOptionPane.showInputDialog(
+                    this,
+                    "Selecciona la operación de E/S:",
+                    "Solicitud de proceso",
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    opciones,
+                    TipoOperacion.LEER
+            );
+            if (operacion == null) {
+                return;
+            }
+        } else {
+            operacion = TipoOperacion.LEER;
+        }
+
+        Archivo archivo = (Archivo) userObject;
+        String error = gestor.solicitarOperacionArchivo(archivo.obtenerNombre(), operacion);
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Solicitud rechazada", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        refrescarVistaCompleta(true);
+        JOptionPane.showMessageDialog(this,
+                "Solicitud creada y procesada: " + operacion + " sobre " + archivo.obtenerNombre() + ".",
+                "Proceso E/S",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private void aplicarSesionActual() {
         boolean modoAdmin = comboModoUsuario.getSelectedIndex() == 0;
         String usuario = txtUsuario.getText();
@@ -342,17 +406,21 @@ public class VentanaPrincipal extends JFrame {
 
     private JTabbedPane crearPanelMonitoreo() {
         areaChecklist = crearAreaMonitoreo();
+        areaSeleccion = crearAreaMonitoreo();
         areaCola = crearAreaMonitoreo();
         areaHistorial = crearAreaMonitoreo();
         areaLocks = crearAreaMonitoreo();
         areaJournal = crearAreaMonitoreo();
+        areaPruebas = crearAreaMonitoreo();
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Checklist", new JScrollPane(areaChecklist));
+        tabs.addTab("Seleccionado", new JScrollPane(areaSeleccion));
         tabs.addTab("Cola", new JScrollPane(areaCola));
         tabs.addTab("Historial", new JScrollPane(areaHistorial));
         tabs.addTab("Locks", new JScrollPane(areaLocks));
         tabs.addTab("Log", new JScrollPane(areaJournal));
+        tabs.addTab("Pruebas", new JScrollPane(areaPruebas));
         tabs.setPreferredSize(new Dimension(300, 0));
         return tabs;
     }
@@ -372,6 +440,32 @@ public class VentanaPrincipal extends JFrame {
         areaHistorial.setText(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(30), "No hay historial."));
         areaLocks.setText(textoDesdeLista(gestor.obtenerResumenLocksActivos(), "No hay locks activos."));
         areaJournal.setText(construirLogConsolidado());
+        areaPruebas.setText(textoDesdeLista(gestor.generarReportePruebasRecomendadas(), "Sin resultados de pruebas."));
+        actualizarInfoSeleccionado();
+    }
+
+    private void actualizarInfoSeleccionado() {
+        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodoSeleccionado == null) {
+            areaSeleccion.setText("Sin selección.\nSelecciona un archivo o directorio en el JTree.");
+            return;
+        }
+
+        Object userObject = nodoSeleccionado.getUserObject();
+        if (!(userObject instanceof ElementoSistema)) {
+            areaSeleccion.setText("Elemento no válido.");
+            return;
+        }
+
+        ElementoSistema elemento = (ElementoSistema) userObject;
+        String tipo = (elemento instanceof Directorio) ? "Directorio" : "Archivo";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Tipo: ").append(tipo).append("\n");
+        sb.append("Nombre: ").append(elemento.obtenerNombre()).append("\n");
+        sb.append("Dueño: ").append(elemento.obtenerDueno()).append("\n");
+        sb.append("Tamaño (bloques): ").append(elemento.obtenerTamano()).append("\n");
+        sb.append("Público: ").append(elemento.esPublico() ? "Sí" : "No").append("\n");
+        areaSeleccion.setText(sb.toString());
     }
 
     private String construirChecklistVisual() {
@@ -453,14 +547,22 @@ public class VentanaPrincipal extends JFrame {
                 Archivo a = gestor.buscarArchivoPorNombre(b.obtenerNombreArchivo());
                 if (a != null) {
                     panelBloque.setBackground(a.obtenerColor());
+                    String txtProceso = b.obtenerProcesoOcupante() >= 0 ? "P" + b.obtenerProcesoOcupante() : "P-";
+                    JLabel lblProceso = new JLabel(txtProceso, SwingConstants.CENTER);
+                    lblProceso.setForeground(Color.WHITE);
+                    lblProceso.setFont(new Font("Arial", Font.BOLD, 10));
+                    panelBloque.add(lblProceso, BorderLayout.NORTH);
+
                     String txtSiguiente = b.obtenerSiguienteBloque() != -1 ? "->" + b.obtenerSiguienteBloque() : "Fin";
                     JLabel lblSig = new JLabel(txtSiguiente, SwingConstants.CENTER);
                     lblSig.setForeground(Color.WHITE);
                     lblSig.setFont(new Font("Arial", Font.BOLD, 10));
                     panelBloque.add(lblSig, BorderLayout.SOUTH);
+                    panelBloque.setToolTipText("Archivo: " + b.obtenerNombreArchivo() + " | Proceso: " + txtProceso);
                 }
             } else {
                 panelBloque.setBackground(Color.GRAY);
+                panelBloque.setToolTipText("Bloque libre");
             }
             panelDisco.add(panelBloque);
         }

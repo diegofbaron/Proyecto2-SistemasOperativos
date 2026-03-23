@@ -164,6 +164,235 @@ public class GestorSistemaArchivos {
         return resumen;
     }
 
+    public Lista<String> generarReporteValidacionSistema() {
+        Lista<String> reporte = new Lista<>();
+        int totalArchivos = todosLosArchivos.obtenerTamano();
+        int totalBloques = disco.obtenerCantidadBloques();
+        int libres = contarBloquesLibres();
+        int ocupados = totalBloques - libres;
+
+        reporte.agregar("=== Validación Integral del Sistema ===");
+        reporte.agregar("Sesión activa: " + usuarioActual + " (" + (modoAdministrador ? "ADMIN" : "USUARIO") + ")");
+        reporte.agregar("Política activa: " + politicaActiva + " | Cabezal=" + posicionCabezal + " | Desplazamiento=" + desplazamientoCabezal);
+        reporte.agregar("Archivos totales: " + totalArchivos);
+        reporte.agregar("Bloques ocupados/libres: " + ocupados + "/" + libres + " de " + totalBloques);
+        reporte.agregar("Procesos en cola: " + colaProcesos.obtenerTamano());
+        reporte.agregar("Procesos en historial: " + historialProcesos.obtenerTamano());
+        reporte.agregar("Locks activos: " + obtenerResumenLocksActivos().obtenerTamano());
+        reporte.agregar("Entradas journal: " + journal.obtenerTamano());
+
+        int pendientesJournal = 0;
+        for (int i = 0; i < journal.obtenerTamano(); i++) {
+            EntradaJournal entrada = journal.obtener(i);
+            if ("PENDIENTE".equals(entrada.estado)) {
+                pendientesJournal++;
+            }
+        }
+        reporte.agregar("Transacciones journal pendientes: " + pendientesJournal);
+
+        reporte.agregar("Checks:");
+        reporte.agregar((raiz != null ? "[OK] " : "[X] ") + "Raíz del árbol disponible");
+        reporte.agregar((totalBloques > 0 ? "[OK] " : "[X] ") + "Disco virtual inicializado");
+        reporte.agregar((posicionCabezal >= 0 && posicionCabezal <= maximoIndiceDisco ? "[OK] " : "[X] ") + "Posición de cabezal válida");
+        reporte.agregar((pendientesJournal == 0 ? "[OK] " : "[WARN] ") + "Journal sin pendientes críticas");
+        return reporte;
+    }
+
+    public Lista<String> generarReportePruebasRecomendadas() {
+        Lista<String> reporte = new Lista<>();
+        reporte.agregar("=== Paso 11 - Pruebas recomendadas ===");
+        reporte.agregar("Cabezal inicial: 50");
+        reporte.agregar("Solicitudes: 95, 180, 34, 119, 11, 123, 62, 64");
+
+        Lista<Integer> solicitudes = construirSolicitudesPrueba();
+        reporte.agregar(validarPoliticaPrueba(PoliticaPlanificacion.FIFO, solicitudes, new int[]{95, 180, 34, 119, 11, 123, 62, 64}));
+        reporte.agregar(validarPoliticaPrueba(PoliticaPlanificacion.SSTF, solicitudes, new int[]{62, 64, 34, 11, 95, 119, 123, 180}));
+        reporte.agregar(validarPoliticaPrueba(PoliticaPlanificacion.SCAN, solicitudes, new int[]{62, 64, 95, 119, 123, 180, 34, 11}));
+        reporte.agregar(validarPoliticaPrueba(PoliticaPlanificacion.C_SCAN, solicitudes, new int[]{62, 64, 95, 119, 123, 180, 11, 34}));
+
+        reporte.agregar(validarCasoJournalJ1());
+        return reporte;
+    }
+
+    private Lista<Integer> construirSolicitudesPrueba() {
+        Lista<Integer> solicitudes = new Lista<>();
+        solicitudes.agregar(95);
+        solicitudes.agregar(180);
+        solicitudes.agregar(34);
+        solicitudes.agregar(119);
+        solicitudes.agregar(11);
+        solicitudes.agregar(123);
+        solicitudes.agregar(62);
+        solicitudes.agregar(64);
+        return solicitudes;
+    }
+
+    private String validarPoliticaPrueba(PoliticaPlanificacion politica, Lista<Integer> solicitudesOriginales, int[] esperado) {
+        Lista<Integer> obtenido = calcularOrdenPolitica(politica, solicitudesOriginales, 50, true);
+        boolean coincide = coincideOrden(obtenido, esperado);
+        return (coincide ? "[OK] " : "[X] ")
+                + politica + " esperado=" + formatearArreglo(esperado)
+                + " obtenido=" + formatearLista(obtenido);
+    }
+
+    private Lista<Integer> calcularOrdenPolitica(PoliticaPlanificacion politica, Lista<Integer> solicitudesOriginales, int cabezalInicial, boolean direccionAsc) {
+        Lista<Integer> pendientes = copiarListaEnteros(solicitudesOriginales);
+        Lista<Integer> orden = new Lista<>();
+        int cabezal = cabezalInicial;
+        boolean asc = direccionAsc;
+
+        while (pendientes.obtenerTamano() > 0) {
+            int seleccion;
+            switch (politica) {
+                case SSTF:
+                    seleccion = seleccionarSstfEnteros(pendientes, cabezal);
+                    break;
+                case SCAN:
+                    seleccion = seleccionarScanEnteros(pendientes, cabezal, asc);
+                    if (seleccion == -1) {
+                        asc = !asc;
+                        seleccion = seleccionarScanEnteros(pendientes, cabezal, asc);
+                    }
+                    break;
+                case C_SCAN:
+                    seleccion = seleccionarScanEnteros(pendientes, cabezal, asc);
+                    if (seleccion == -1) {
+                        seleccion = seleccionarExtremoEnteros(pendientes, asc);
+                    }
+                    break;
+                case FIFO:
+                default:
+                    seleccion = 0;
+                    break;
+            }
+
+            int siguiente = pendientes.obtener(seleccion);
+            orden.agregar(siguiente);
+            pendientes.eliminar(siguiente);
+            cabezal = siguiente;
+        }
+
+        return orden;
+    }
+
+    private int seleccionarSstfEnteros(Lista<Integer> pendientes, int cabezal) {
+        int indice = 0;
+        int mejorDistancia = Integer.MAX_VALUE;
+        int mejorValor = Integer.MAX_VALUE;
+        for (int i = 0; i < pendientes.obtenerTamano(); i++) {
+            int valor = pendientes.obtener(i);
+            int distancia = Math.abs(valor - cabezal);
+            if (distancia < mejorDistancia || (distancia == mejorDistancia && valor < mejorValor)) {
+                indice = i;
+                mejorDistancia = distancia;
+                mejorValor = valor;
+            }
+        }
+        return indice;
+    }
+
+    private int seleccionarScanEnteros(Lista<Integer> pendientes, int cabezal, boolean asc) {
+        int indice = -1;
+        int mejorDistancia = Integer.MAX_VALUE;
+        for (int i = 0; i < pendientes.obtenerTamano(); i++) {
+            int valor = pendientes.obtener(i);
+            int delta = valor - cabezal;
+            if (asc && delta < 0) {
+                continue;
+            }
+            if (!asc && delta > 0) {
+                continue;
+            }
+            int distancia = Math.abs(delta);
+            if (distancia < mejorDistancia) {
+                mejorDistancia = distancia;
+                indice = i;
+            }
+        }
+        return indice;
+    }
+
+    private int seleccionarExtremoEnteros(Lista<Integer> pendientes, boolean asc) {
+        int indice = 0;
+        int extremo = pendientes.obtener(0);
+        for (int i = 1; i < pendientes.obtenerTamano(); i++) {
+            int valor = pendientes.obtener(i);
+            if (asc) {
+                if (valor < extremo) {
+                    extremo = valor;
+                    indice = i;
+                }
+            } else {
+                if (valor > extremo) {
+                    extremo = valor;
+                    indice = i;
+                }
+            }
+        }
+        return indice;
+    }
+
+    private Lista<Integer> copiarListaEnteros(Lista<Integer> original) {
+        Lista<Integer> copia = new Lista<>();
+        for (int i = 0; i < original.obtenerTamano(); i++) {
+            copia.agregar(original.obtener(i));
+        }
+        return copia;
+    }
+
+    private boolean coincideOrden(Lista<Integer> obtenido, int[] esperado) {
+        if (obtenido.obtenerTamano() != esperado.length) {
+            return false;
+        }
+        for (int i = 0; i < esperado.length; i++) {
+            if (obtenido.obtener(i) != esperado[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String formatearArreglo(int[] arreglo) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < arreglo.length; i++) {
+            sb.append(arreglo[i]);
+            if (i < arreglo.length - 1) {
+                sb.append(", ");
+            }
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    private String formatearLista(Lista<Integer> lista) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < lista.obtenerTamano(); i++) {
+            sb.append(lista.obtener(i));
+            if (i < lista.obtenerTamano() - 1) {
+                sb.append(", ");
+            }
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    private String validarCasoJournalJ1() {
+        GestorSistemaArchivos prueba = new GestorSistemaArchivos(20);
+        prueba.configurarSesion("admin", true);
+        prueba.configurarSimulacionFallo(true);
+
+        String resultadoCrear = prueba.crearArchivo("J1.txt", "admin", prueba.obtenerRaiz(), 4, false);
+        int recuperadas = prueba.ejecutarRecuperacionJournalPendientes();
+        Archivo restante = prueba.buscarArchivoPorNombre("J1.txt");
+
+        boolean ok = resultadoCrear != null && recuperadas > 0 && restante == null;
+        return (ok ? "[OK] " : "[X] ")
+                + "J1 Crash en CREATE -> recovery "
+                + "(mensajeFallo=" + (resultadoCrear != null)
+                + ", recuperadas=" + recuperadas
+                + ", archivoRestante=" + (restante != null) + ")";
+    }
+
     public int ejecutarRecuperacionJournalPendientes() {
         int recuperadas = 0;
         for (int i = 0; i < journal.obtenerTamano(); i++) {
@@ -394,7 +623,7 @@ public class GestorSistemaArchivos {
             Archivo archivoCreado = p.obtenerArchivoDestino();
             EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.CREAR, archivoCreado, null);
 
-            boolean exito = asignarBloquesAArchivo(archivoCreado);
+            boolean exito = asignarBloquesAArchivo(archivoCreado, p.obtenerId());
             if (exito) {
                 if (simularFalloAntesCommit) {
                     p.establecerEstado(EstadoProceso.BLOQUEADO);
@@ -428,6 +657,8 @@ public class GestorSistemaArchivos {
             return;
         }
 
+        marcarProcesoEnCadenaBloques(archivoDestino, p.obtenerId());
+
         p.establecerEstado(EstadoProceso.TERMINADO);
         p.establecerMensajeResultado("Completado con lock " + tipoLockDeOperacion(p.obtenerOperacion()));
 
@@ -454,7 +685,7 @@ public class GestorSistemaArchivos {
         return;
     }
 
-    private boolean asignarBloquesAArchivo(Archivo archivo) {
+    private boolean asignarBloquesAArchivo(Archivo archivo, int procesoId) {
         int bloquesNecesarios = archivo.obtenerTamano();
         int bloquesAsignados = 0;
         int bloqueAnterior = -1;
@@ -469,7 +700,7 @@ public class GestorSistemaArchivos {
                 } else {
                     disco.obtenerBloque(bloqueAnterior).establecerSiguienteBloque(i);
                 }
-                disco.ocuparBloque(i, archivo.obtenerNombre(), -1);
+                disco.ocuparBloque(i, archivo.obtenerNombre(), -1, procesoId);
                 bloquesTemporales.agregar(i);
                 bloqueAnterior = i;
                 bloquesAsignados++;
@@ -497,6 +728,18 @@ public class GestorSistemaArchivos {
             }
         }
         return null;
+    }
+
+    private void marcarProcesoEnCadenaBloques(Archivo archivo, int procesoId) {
+        if (archivo == null) {
+            return;
+        }
+        int bloqueActual = archivo.obtenerBloqueInicial();
+        while (bloqueActual != -1 && bloqueActual < disco.obtenerCantidadBloques()) {
+            Bloque bloque = disco.obtenerBloque(bloqueActual);
+            bloque.establecerProcesoOcupante(procesoId);
+            bloqueActual = bloque.obtenerSiguienteBloque();
+        }
     }
 
     public String obtenerResumenLockArchivo(String nombreArchivo) {
@@ -590,10 +833,7 @@ public class GestorSistemaArchivos {
         }
 
         if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
-            if (esDueno) {
-                return null;
-            }
-            return "En modo usuario solo puedes modificar o eliminar archivos propios.";
+            return "En modo usuario solo se permite lectura.";
         }
 
         return "Operación no permitida para el modo actual.";
@@ -838,7 +1078,8 @@ public class GestorSistemaArchivos {
         for (int i = 0; i < disco.obtenerCantidadBloques(); i++) {
             Bloque b = disco.obtenerBloque(i);
             sb.append("    {\"id\":").append(b.obtenerId()).append(",\"ocupado\":").append(b.estaOcupado())
-                .append(",\"archivo\":\"").append(escaparJson(b.obtenerNombreArchivo())).append("\",\"siguiente\":").append(b.obtenerSiguienteBloque()).append("}");
+                .append(",\"archivo\":\"").append(escaparJson(b.obtenerNombreArchivo())).append("\",\"siguiente\":").append(b.obtenerSiguienteBloque())
+                .append(",\"proceso\":").append(b.obtenerProcesoOcupante()).append("}");
             if (i < disco.obtenerCantidadBloques() - 1) {
                 sb.append(",");
             }
@@ -954,6 +1195,7 @@ public class GestorSistemaArchivos {
             reg.ocupado = extraerBooleano(obj, "ocupado", false);
             reg.archivo = extraerCadena(obj, "archivo", "");
             reg.siguiente = extraerEntero(obj, "siguiente", -1);
+            reg.proceso = extraerEntero(obj, "proceso", -1);
             resultado.agregar(reg);
         }
         return resultado;
@@ -1053,7 +1295,7 @@ public class GestorSistemaArchivos {
                 continue;
             }
             if (reg.ocupado) {
-                disco.ocuparBloque(reg.id, reg.archivo, reg.siguiente);
+                disco.ocuparBloque(reg.id, reg.archivo, reg.siguiente, reg.proceso);
             } else {
                 disco.liberarBloque(reg.id);
             }
@@ -1263,6 +1505,7 @@ public class GestorSistemaArchivos {
         boolean ocupado;
         String archivo;
         int siguiente;
+        int proceso;
     }
 
     private static class RutaDirectorio {

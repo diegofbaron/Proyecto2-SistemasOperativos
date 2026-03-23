@@ -9,12 +9,14 @@ public class Bloque {
     private boolean ocupado;
     private String nombreArchivo;
     private int siguienteBloque;
+    private int procesoOcupante;
 
     public Bloque(int id) {
         this.id = id;
         this.ocupado = false;
         this.nombreArchivo = "";
         this.siguienteBloque = -1;
+        this.procesoOcupante = -1;
     }
 
     public int obtenerId() {
@@ -43,5 +45,13 @@ public class Bloque {
 
     public void establecerSiguienteBloque(int siguienteBloque) {
         this.siguienteBloque = siguienteBloque;
+    }
+
+    public int obtenerProcesoOcupante() {
+        return procesoOcupante;
+    }
+
+    public void establecerProcesoOcupante(int procesoOcupante) {
+        this.procesoOcupante = procesoOcupante;
     }
 }
