@@ -10,6 +10,8 @@ public class Proceso {
     private TipoOperacion operacion;
     private Archivo archivoDestino;
     private int tamanoRequerido;
+    private String detalleOperacion;
+    private String mensajeResultado;
 
     public Proceso(int id, TipoOperacion operacion, Archivo archivoDestino, int tamanoRequerido) {
         this.id = id;
@@ -17,6 +19,8 @@ public class Proceso {
         this.operacion = operacion;
         this.archivoDestino = archivoDestino;
         this.tamanoRequerido = tamanoRequerido;
+        this.detalleOperacion = construirDetalleOperacion(operacion, archivoDestino);
+        this.mensajeResultado = "Pendiente";
     }
 
     public int obtenerId() {
@@ -41,5 +45,22 @@ public class Proceso {
 
     public int obtenerTamanoRequerido() {
         return tamanoRequerido;
+    }
+
+    public String obtenerDetalleOperacion() {
+        return detalleOperacion;
+    }
+
+    public String obtenerMensajeResultado() {
+        return mensajeResultado;
+    }
+
+    public void establecerMensajeResultado(String mensajeResultado) {
+        this.mensajeResultado = mensajeResultado;
+    }
+
+    private String construirDetalleOperacion(TipoOperacion operacion, Archivo archivoDestino) {
+        String nombreArchivo = archivoDestino != null ? archivoDestino.obtenerNombre() : "(sin archivo)";
+        return operacion.name() + " " + nombreArchivo;
     }
 }
