@@ -1,3 +1,5 @@
 /build/
 /nbproject/private/
 .DS_Store
+/docs/
+/enunciado.md
