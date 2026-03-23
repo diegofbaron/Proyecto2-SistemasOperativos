@@ -19,6 +19,7 @@ public class VentanaPrincipal extends JFrame {
     private JPanel panelDisco;
     private JComboBox<String> comboModoUsuario;
     private JButton btnCrear;
+    private JButton btnRenombrar;
     private JButton btnEliminar;
 
     public VentanaPrincipal() {
@@ -55,16 +56,19 @@ public class VentanaPrincipal extends JFrame {
         
         comboModoUsuario = new JComboBox<>(new String[]{"Modo Administrador", "Modo Usuario"});
         btnCrear = new JButton("Crear Archivo/Directorio");
+        btnRenombrar = new JButton("Renombrar");
         btnEliminar = new JButton("Eliminar");
 
         panelControles.add(new JLabel("Modo:"));
         panelControles.add(comboModoUsuario);
         panelControles.add(btnCrear);
+        panelControles.add(btnRenombrar);
         panelControles.add(btnEliminar);
 
         add(panelControles, BorderLayout.SOUTH);
 
         btnCrear.addActionListener(e -> accionCrearElemento());
+        btnRenombrar.addActionListener(e -> accionRenombrarElemento());
         btnEliminar.addActionListener(e -> accionEliminarElemento());
 
         actualizarArbol();
@@ -99,30 +103,61 @@ public class VentanaPrincipal extends JFrame {
         if (seleccion == -1) return; 
 
         String nombre = JOptionPane.showInputDialog(this, "Nombre del elemento:");
-        if (nombre == null || nombre.trim().isEmpty()) return;
+        if (nombre == null) return;
 
-        if (seleccion == 0) { 
+        String error;
+        if (seleccion == 0) {
             String tamanoStr = JOptionPane.showInputDialog(this, "Tamaño en bloques:");
             try {
                 int tamano = Integer.parseInt(tamanoStr);
-                if (tamano <= 0) throw new NumberFormatException();
-                
-                Proceso p = gestor.solicitarCreacionArchivo(nombre, "admin", directorioPadre, tamano);
-                gestor.ejecutarProceso(p); 
-                
+                error = gestor.crearArchivo(nombre, "admin", directorioPadre, tamano);
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this, "El tamaño debe ser un entero positivo.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
-        } else { 
-            Directorio nuevoDir = new Directorio(nombre, "admin", directorioPadre);
-            directorioPadre.agregarHijo(nuevoDir);
+        } else {
+            error = gestor.crearDirectorio(nombre, "admin", directorioPadre);
+        }
+
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            return;
         }
 
         actualizarArbol(); 
         actualizarDisco();
         actualizarTabla();
         expandirTodoElArbol(); 
+    }
+
+    private void accionRenombrarElemento() {
+        if (comboModoUsuario.getSelectedIndex() != 0) {
+            JOptionPane.showMessageDialog(this, "Solo los administradores pueden renombrar elementos.", "Acceso Denegado", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodoSeleccionado == null) {
+            JOptionPane.showMessageDialog(this, "Por favor, selecciona un elemento para renombrar.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        ElementoSistema elemento = (ElementoSistema) nodoSeleccionado.getUserObject();
+        String nuevoNombre = JOptionPane.showInputDialog(this, "Nuevo nombre:", elemento.obtenerNombre());
+        if (nuevoNombre == null) {
+            return;
+        }
+
+        String error = gestor.renombrarElemento(elemento, nuevoNombre);
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        actualizarArbol();
+        actualizarDisco();
+        actualizarTabla();
+        expandirTodoElArbol();
     }
 
     private void accionEliminarElemento() {

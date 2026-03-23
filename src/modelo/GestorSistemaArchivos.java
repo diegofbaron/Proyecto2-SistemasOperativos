@@ -12,6 +12,7 @@ public class GestorSistemaArchivos {
     private DiscoVirtual disco;
     private Directorio raiz;
     private Cola<Proceso> colaProcesos;
+    private Lista<Proceso> historialProcesos;
     private Lista<Archivo> todosLosArchivos;
     private int contadorProcesos;
 
@@ -19,6 +20,7 @@ public class GestorSistemaArchivos {
         this.disco = new DiscoVirtual(cantidadBloquesDisco);
         this.raiz = new Directorio("Raiz", "admin", null);
         this.colaProcesos = new Cola<>();
+        this.historialProcesos = new Lista<>();
         this.todosLosArchivos = new Lista<>();
         this.contadorProcesos = 1;
     }
@@ -35,28 +37,125 @@ public class GestorSistemaArchivos {
         return colaProcesos;
     }
 
+    public Lista<Proceso> obtenerHistorialProcesos() {
+        return historialProcesos;
+    }
+
     public Lista<Archivo> obtenerTodosLosArchivos() {
         return todosLosArchivos;
+    }
+
+    public String crearArchivo(String nombre, String dueno, Directorio padre, int tamano) {
+        String errorValidacion = validarCreacion(nombre, padre, tamano);
+        if (errorValidacion != null) {
+            return errorValidacion;
+        }
+
+        Proceso p = solicitarCreacionArchivo(nombre.trim(), dueno, padre, tamano);
+        despacharSiguienteProceso();
+
+        if (p.obtenerEstado() == EstadoProceso.BLOQUEADO) {
+            return p.obtenerMensajeResultado();
+        }
+
+        return null;
+    }
+
+    public String crearDirectorio(String nombre, String dueno, Directorio padre) {
+        String nombreNormalizado = normalizarNombre(nombre);
+        if (nombreNormalizado == null) {
+            return "El nombre no puede estar vacío.";
+        }
+        if (padre == null) {
+            return "Debes seleccionar un directorio padre válido.";
+        }
+        if (existeNombreEnDirectorio(padre, nombreNormalizado, null)) {
+            return "Ya existe un elemento con ese nombre en el directorio seleccionado.";
+        }
+
+        Directorio nuevoDir = new Directorio(nombreNormalizado, dueno, padre);
+        padre.agregarHijo(nuevoDir);
+        return null;
+    }
+
+    public String renombrarElemento(ElementoSistema elemento, String nuevoNombre) {
+        if (elemento == null) {
+            return "Debes seleccionar un elemento para renombrar.";
+        }
+        if (elemento.obtenerPadre() == null) {
+            return "No se puede renombrar el directorio raíz del sistema.";
+        }
+
+        String nombreNormalizado = normalizarNombre(nuevoNombre);
+        if (nombreNormalizado == null) {
+            return "El nuevo nombre no puede estar vacío.";
+        }
+
+        Directorio padre = elemento.obtenerPadre();
+        if (existeNombreEnDirectorio(padre, nombreNormalizado, elemento)) {
+            return "Ya existe un elemento con ese nombre en el directorio seleccionado.";
+        }
+
+        elemento.establecerNombre(nombreNormalizado);
+        return null;
     }
 
     public Proceso solicitarCreacionArchivo(String nombre, String dueno, Directorio padre, int tamano) {
         Archivo nuevoArchivo = new Archivo(nombre, dueno, padre, tamano);
         Proceso p = new Proceso(contadorProcesos++, TipoOperacion.CREAR, nuevoArchivo, tamano);
+        p.establecerEstado(EstadoProceso.LISTO);
         colaProcesos.encolar(p);
+        historialProcesos.agregar(p);
         return p;
     }
 
+    public Proceso despacharSiguienteProceso() {
+        Proceso siguiente = colaProcesos.desencolar();
+        if (siguiente == null) {
+            return null;
+        }
+
+        ejecutarProceso(siguiente);
+        return siguiente;
+    }
+
+    public int despacharTodosLosProcesosPendientes() {
+        int procesosEjecutados = 0;
+        while (!colaProcesos.estaVacia()) {
+            Proceso ejecutado = despacharSiguienteProceso();
+            if (ejecutado != null) {
+                procesosEjecutados++;
+            }
+        }
+        return procesosEjecutados;
+    }
+
+    public int obtenerCantidadProcesosPendientes() {
+        return colaProcesos.obtenerTamano();
+    }
+
     public void ejecutarProceso(Proceso p) {
+        if (p == null) {
+            return;
+        }
+
         p.establecerEstado(EstadoProceso.EJECUTANDO);
+        p.establecerMensajeResultado("En ejecución");
         
         if (p.obtenerOperacion() == TipoOperacion.CREAR) {
             boolean exito = asignarBloquesAArchivo(p.obtenerArchivoDestino());
             if (exito) {
                 p.establecerEstado(EstadoProceso.TERMINADO);
+                p.establecerMensajeResultado("Completado");
             } else {
                 p.establecerEstado(EstadoProceso.BLOQUEADO);
+                p.establecerMensajeResultado("No hay suficientes bloques disponibles para crear el archivo.");
             }
+            return;
         }
+
+        p.establecerEstado(EstadoProceso.BLOQUEADO);
+        p.establecerMensajeResultado("Operación no soportada por el despachador actual.");
     }
 
     private boolean asignarBloquesAArchivo(Archivo archivo) {
@@ -123,5 +222,63 @@ public class GestorSistemaArchivos {
         if (elemento.obtenerPadre() != null) {
             elemento.obtenerPadre().eliminarHijo(elemento);
         }
+    }
+
+    private String validarCreacion(String nombre, Directorio padre, int tamano) {
+        String nombreNormalizado = normalizarNombre(nombre);
+        if (nombreNormalizado == null) {
+            return "El nombre no puede estar vacío.";
+        }
+        if (padre == null) {
+            return "Debes seleccionar un directorio padre válido.";
+        }
+        if (tamano <= 0) {
+            return "El tamaño debe ser un entero positivo.";
+        }
+        if (existeNombreEnDirectorio(padre, nombreNormalizado, null)) {
+            return "Ya existe un elemento con ese nombre en el directorio seleccionado.";
+        }
+        if (!hayEspacioDisponible(tamano)) {
+            return "Espacio insuficiente en el disco para crear el archivo.";
+        }
+        return null;
+    }
+
+    private String normalizarNombre(String nombre) {
+        if (nombre == null) {
+            return null;
+        }
+        String limpio = nombre.trim();
+        if (limpio.isEmpty()) {
+            return null;
+        }
+        return limpio;
+    }
+
+    private boolean existeNombreEnDirectorio(Directorio directorio, String nombre, ElementoSistema excluido) {
+        for (int i = 0; i < directorio.obtenerHijos().obtenerTamano(); i++) {
+            ElementoSistema hijo = directorio.obtenerHijos().obtener(i);
+            if (hijo == excluido) {
+                continue;
+            }
+            if (hijo.obtenerNombre().equalsIgnoreCase(nombre)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hayEspacioDisponible(int bloquesNecesarios) {
+        return contarBloquesLibres() >= bloquesNecesarios;
+    }
+
+    private int contarBloquesLibres() {
+        int libres = 0;
+        for (int i = 0; i < disco.obtenerCantidadBloques(); i++) {
+            if (!disco.obtenerBloque(i).estaOcupado()) {
+                libres++;
+            }
+        }
+        return libres;
     }
 }
