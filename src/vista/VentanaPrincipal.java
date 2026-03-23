@@ -40,6 +40,7 @@ public class VentanaPrincipal extends JFrame {
     private JTextArea areaLocks;
     private JTextArea areaJournal;
     private JTextArea areaChecklist;
+    private JTextArea areaSeleccion;
     private JLabel lblUltimaActualizacion;
 
     public VentanaPrincipal() {
@@ -142,6 +143,7 @@ public class VentanaPrincipal extends JFrame {
         btnSimularFallo.addActionListener(e -> accionToggleFallo());
         btnRecuperarJournal.addActionListener(e -> accionRecuperarJournal());
         btnActualizarMonitoreo.addActionListener(e -> refrescarVistaCompleta(false));
+        arbolSistema.addTreeSelectionListener(e -> actualizarInfoSeleccionado());
 
         aplicarSesionActual();
         refrescarVistaCompleta(true);
@@ -342,6 +344,7 @@ public class VentanaPrincipal extends JFrame {
 
     private JTabbedPane crearPanelMonitoreo() {
         areaChecklist = crearAreaMonitoreo();
+        areaSeleccion = crearAreaMonitoreo();
         areaCola = crearAreaMonitoreo();
         areaHistorial = crearAreaMonitoreo();
         areaLocks = crearAreaMonitoreo();
@@ -349,6 +352,7 @@ public class VentanaPrincipal extends JFrame {
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Checklist", new JScrollPane(areaChecklist));
+        tabs.addTab("Seleccionado", new JScrollPane(areaSeleccion));
         tabs.addTab("Cola", new JScrollPane(areaCola));
         tabs.addTab("Historial", new JScrollPane(areaHistorial));
         tabs.addTab("Locks", new JScrollPane(areaLocks));
@@ -372,6 +376,31 @@ public class VentanaPrincipal extends JFrame {
         areaHistorial.setText(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(30), "No hay historial."));
         areaLocks.setText(textoDesdeLista(gestor.obtenerResumenLocksActivos(), "No hay locks activos."));
         areaJournal.setText(construirLogConsolidado());
+        actualizarInfoSeleccionado();
+    }
+
+    private void actualizarInfoSeleccionado() {
+        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodoSeleccionado == null) {
+            areaSeleccion.setText("Sin selección.\nSelecciona un archivo o directorio en el JTree.");
+            return;
+        }
+
+        Object userObject = nodoSeleccionado.getUserObject();
+        if (!(userObject instanceof ElementoSistema)) {
+            areaSeleccion.setText("Elemento no válido.");
+            return;
+        }
+
+        ElementoSistema elemento = (ElementoSistema) userObject;
+        String tipo = (elemento instanceof Directorio) ? "Directorio" : "Archivo";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Tipo: ").append(tipo).append("\n");
+        sb.append("Nombre: ").append(elemento.obtenerNombre()).append("\n");
+        sb.append("Dueño: ").append(elemento.obtenerDueno()).append("\n");
+        sb.append("Tamaño (bloques): ").append(elemento.obtenerTamano()).append("\n");
+        sb.append("Público: ").append(elemento.esPublico() ? "Sí" : "No").append("\n");
+        areaSeleccion.setText(sb.toString());
     }
 
     private String construirChecklistVisual() {

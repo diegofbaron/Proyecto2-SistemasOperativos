@@ -164,6 +164,40 @@ public class GestorSistemaArchivos {
         return resumen;
     }
 
+    public Lista<String> generarReporteValidacionSistema() {
+        Lista<String> reporte = new Lista<>();
+        int totalArchivos = todosLosArchivos.obtenerTamano();
+        int totalBloques = disco.obtenerCantidadBloques();
+        int libres = contarBloquesLibres();
+        int ocupados = totalBloques - libres;
+
+        reporte.agregar("=== Validación Integral del Sistema ===");
+        reporte.agregar("Sesión activa: " + usuarioActual + " (" + (modoAdministrador ? "ADMIN" : "USUARIO") + ")");
+        reporte.agregar("Política activa: " + politicaActiva + " | Cabezal=" + posicionCabezal + " | Desplazamiento=" + desplazamientoCabezal);
+        reporte.agregar("Archivos totales: " + totalArchivos);
+        reporte.agregar("Bloques ocupados/libres: " + ocupados + "/" + libres + " de " + totalBloques);
+        reporte.agregar("Procesos en cola: " + colaProcesos.obtenerTamano());
+        reporte.agregar("Procesos en historial: " + historialProcesos.obtenerTamano());
+        reporte.agregar("Locks activos: " + obtenerResumenLocksActivos().obtenerTamano());
+        reporte.agregar("Entradas journal: " + journal.obtenerTamano());
+
+        int pendientesJournal = 0;
+        for (int i = 0; i < journal.obtenerTamano(); i++) {
+            EntradaJournal entrada = journal.obtener(i);
+            if ("PENDIENTE".equals(entrada.estado)) {
+                pendientesJournal++;
+            }
+        }
+        reporte.agregar("Transacciones journal pendientes: " + pendientesJournal);
+
+        reporte.agregar("Checks:");
+        reporte.agregar((raiz != null ? "[OK] " : "[X] ") + "Raíz del árbol disponible");
+        reporte.agregar((totalBloques > 0 ? "[OK] " : "[X] ") + "Disco virtual inicializado");
+        reporte.agregar((posicionCabezal >= 0 && posicionCabezal <= maximoIndiceDisco ? "[OK] " : "[X] ") + "Posición de cabezal válida");
+        reporte.agregar((pendientesJournal == 0 ? "[OK] " : "[WARN] ") + "Journal sin pendientes críticas");
+        return reporte;
+    }
+
     public int ejecutarRecuperacionJournalPendientes() {
         int recuperadas = 0;
         for (int i = 0; i < journal.obtenerTamano(); i++) {
