@@ -10,15 +10,21 @@ public class Proceso {
     private TipoOperacion operacion;
     private Archivo archivoDestino;
     private int tamanoRequerido;
+    private int posicionSolicitudDisco;
     private String detalleOperacion;
     private String mensajeResultado;
 
     public Proceso(int id, TipoOperacion operacion, Archivo archivoDestino, int tamanoRequerido) {
+        this(id, operacion, archivoDestino, tamanoRequerido, 0);
+    }
+
+    public Proceso(int id, TipoOperacion operacion, Archivo archivoDestino, int tamanoRequerido, int posicionSolicitudDisco) {
         this.id = id;
         this.estado = EstadoProceso.NUEVO;
         this.operacion = operacion;
         this.archivoDestino = archivoDestino;
         this.tamanoRequerido = tamanoRequerido;
+        this.posicionSolicitudDisco = posicionSolicitudDisco;
         this.detalleOperacion = construirDetalleOperacion(operacion, archivoDestino);
         this.mensajeResultado = "Pendiente";
     }
@@ -45,6 +51,14 @@ public class Proceso {
 
     public int obtenerTamanoRequerido() {
         return tamanoRequerido;
+    }
+
+    public int obtenerPosicionSolicitudDisco() {
+        return posicionSolicitudDisco;
+    }
+
+    public void establecerPosicionSolicitudDisco(int posicionSolicitudDisco) {
+        this.posicionSolicitudDisco = posicionSolicitudDisco;
     }
 
     public String obtenerDetalleOperacion() {
