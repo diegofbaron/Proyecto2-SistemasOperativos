@@ -16,3 +16,5 @@
 - Documento: [docs/paso-06-permisos-roles.md](docs/paso-06-permisos-roles.md)
 - Paso 7 (Persistencia JSON): completado.
 - Documento: [docs/paso-07-persistencia-json.md](docs/paso-07-persistencia-json.md)
+- Paso 8 (Journaling y recuperación): completado.
+- Documento: [docs/paso-08-journaling-recuperacion.md](docs/paso-08-journaling-recuperacion.md)

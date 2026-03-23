@@ -28,6 +28,9 @@ public class GestorSistemaArchivos {
     private int maximoIndiceDisco;
     private String usuarioActual;
     private boolean modoAdministrador;
+    private Lista<EntradaJournal> journal;
+    private boolean simularFalloAntesCommit;
+    private int contadorTransacciones;
 
     public GestorSistemaArchivos(int cantidadBloquesDisco) {
         this.disco = new DiscoVirtual(cantidadBloquesDisco);
@@ -43,6 +46,9 @@ public class GestorSistemaArchivos {
         this.maximoIndiceDisco = Math.max(0, cantidadBloquesDisco - 1);
         this.usuarioActual = "admin";
         this.modoAdministrador = true;
+        this.journal = new Lista<>();
+        this.simularFalloAntesCommit = false;
+        this.contadorTransacciones = 1;
     }
 
     public Directorio obtenerRaiz() {
@@ -105,6 +111,44 @@ public class GestorSistemaArchivos {
 
     public boolean esModoAdministrador() {
         return modoAdministrador;
+    }
+
+    public boolean estaSimulacionFalloActiva() {
+        return simularFalloAntesCommit;
+    }
+
+    public void configurarSimulacionFallo(boolean activar) {
+        this.simularFalloAntesCommit = activar;
+    }
+
+    public Lista<String> obtenerResumenJournal() {
+        Lista<String> resumen = new Lista<>();
+        for (int i = 0; i < journal.obtenerTamano(); i++) {
+            EntradaJournal e = journal.obtener(i);
+            resumen.agregar("TX-" + e.id + " " + e.operacion + " " + e.estado + " " + e.rutaArchivo);
+        }
+        return resumen;
+    }
+
+    public int ejecutarRecuperacionJournalPendientes() {
+        int recuperadas = 0;
+        for (int i = 0; i < journal.obtenerTamano(); i++) {
+            EntradaJournal entrada = journal.obtener(i);
+            if (!"PENDIENTE".equals(entrada.estado)) {
+                continue;
+            }
+
+            if (TipoOperacion.CREAR.name().equals(entrada.operacion)) {
+                deshacerCreatePendiente(entrada);
+            } else if (TipoOperacion.ELIMINAR.name().equals(entrada.operacion)) {
+                deshacerDeletePendiente(entrada);
+            }
+
+            entrada.estado = "ABORTADA";
+            entrada.detalle = "UNDO aplicado en recuperación";
+            recuperadas++;
+        }
+        return recuperadas;
     }
 
     public String guardarEstadoEnJson(String rutaArchivo) {
@@ -300,11 +344,23 @@ public class GestorSistemaArchivos {
         p.establecerMensajeResultado("En ejecución en bloque " + p.obtenerPosicionSolicitudDisco());
         
         if (p.obtenerOperacion() == TipoOperacion.CREAR) {
-            boolean exito = asignarBloquesAArchivo(p.obtenerArchivoDestino());
+            Archivo archivoCreado = p.obtenerArchivoDestino();
+            EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.CREAR, archivoCreado, null);
+
+            boolean exito = asignarBloquesAArchivo(archivoCreado);
             if (exito) {
+                if (simularFalloAntesCommit) {
+                    p.establecerEstado(EstadoProceso.BLOQUEADO);
+                    p.establecerMensajeResultado("Fallo simulado antes del commit. Operación quedó PENDIENTE en journal.");
+                    entrada.detalle = "Fallo simulado antes de commit";
+                    return;
+                }
+
+                confirmarEntradaJournal(entrada, "Commit exitoso CREATE");
                 p.establecerEstado(EstadoProceso.TERMINADO);
                 p.establecerMensajeResultado("Completado");
             } else {
+                abortarEntradaJournal(entrada, "No hay espacio suficiente");
                 p.establecerEstado(EstadoProceso.BLOQUEADO);
                 p.establecerMensajeResultado("No hay suficientes bloques disponibles para crear el archivo.");
             }
@@ -329,7 +385,21 @@ public class GestorSistemaArchivos {
         p.establecerMensajeResultado("Completado con lock " + tipoLockDeOperacion(p.obtenerOperacion()));
 
         if (p.obtenerOperacion() == TipoOperacion.ELIMINAR) {
+            SnapshotArchivoEliminado snapshot = crearSnapshotArchivo(archivoDestino);
+            EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.ELIMINAR, archivoDestino, snapshot);
+
             eliminarElemento(archivoDestino);
+
+            if (simularFalloAntesCommit) {
+                p.establecerEstado(EstadoProceso.BLOQUEADO);
+                p.establecerMensajeResultado("Fallo simulado antes del commit. Eliminación quedó PENDIENTE en journal.");
+                entrada.detalle = "Fallo simulado antes de commit";
+                liberarLock(archivoDestino, p);
+                desbloquearProcesosEnEspera(archivoDestino);
+                return;
+            }
+
+            confirmarEntradaJournal(entrada, "Commit exitoso DELETE");
         }
 
         liberarLock(archivoDestino, p);
@@ -727,6 +797,28 @@ public class GestorSistemaArchivos {
             }
             sb.append("\n");
         }
+        sb.append("  ],\n");
+
+        sb.append("  \"journal\":[\n");
+        for (int i = 0; i < journal.obtenerTamano(); i++) {
+            EntradaJournal e = journal.obtener(i);
+            sb.append("    {\"id\":").append(e.id)
+                .append(",\"operacion\":\"").append(escaparJson(e.operacion)).append("\"")
+                .append(",\"estado\":\"").append(escaparJson(e.estado)).append("\"")
+                .append(",\"ruta\":\"").append(escaparJson(e.rutaArchivo)).append("\"")
+                .append(",\"padre\":").append(e.padreRuta == null ? "null" : "\"" + escaparJson(e.padreRuta) + "\"")
+                .append(",\"nombre\":\"").append(escaparJson(e.nombreArchivo)).append("\"")
+                .append(",\"dueno\":\"").append(escaparJson(e.duenoArchivo)).append("\"")
+                .append(",\"publico\":").append(e.publico)
+                .append(",\"tamano\":").append(e.tamano)
+                .append(",\"bloqueInicial\":").append(e.bloqueInicial)
+                .append(",\"bloques\":\"").append(escaparJson(e.cadenaBloques)).append("\"")
+                .append(",\"detalle\":\"").append(escaparJson(e.detalle)).append("\"}");
+            if (i < journal.obtenerTamano() - 1) {
+                sb.append(",");
+            }
+            sb.append("\n");
+        }
         sb.append("  ]\n");
         sb.append("}\n");
         return sb.toString();
@@ -751,6 +843,9 @@ public class GestorSistemaArchivos {
 
         Lista<RegistroBloque> bloques = parsearBloques(extraerSeccionArreglo(json, "bloques"));
         aplicarBloques(bloques);
+
+        this.journal = parsearJournal(extraerSeccionArreglo(json, "journal"));
+        this.contadorTransacciones = calcularSiguienteTransaccion();
 
         configurarSesion(usuario, admin);
         PoliticaPlanificacion politica = parsearPolitica(politicaTexto);
@@ -813,6 +908,29 @@ public class GestorSistemaArchivos {
             reg.archivo = extraerCadena(obj, "archivo", "");
             reg.siguiente = extraerEntero(obj, "siguiente", -1);
             resultado.agregar(reg);
+        }
+        return resultado;
+    }
+
+    private Lista<EntradaJournal> parsearJournal(String arregloJson) {
+        Lista<EntradaJournal> resultado = new Lista<>();
+        Lista<String> objetos = dividirObjetos(arregloJson);
+        for (int i = 0; i < objetos.obtenerTamano(); i++) {
+            String obj = objetos.obtener(i);
+            EntradaJournal e = new EntradaJournal();
+            e.id = extraerEntero(obj, "id", i + 1);
+            e.operacion = extraerCadena(obj, "operacion", TipoOperacion.CREAR.name());
+            e.estado = extraerCadena(obj, "estado", "CONFIRMADA");
+            e.rutaArchivo = extraerCadena(obj, "ruta", "");
+            e.padreRuta = extraerCadenaNullable(obj, "padre");
+            e.nombreArchivo = extraerCadena(obj, "nombre", "");
+            e.duenoArchivo = extraerCadena(obj, "dueno", "admin");
+            e.publico = extraerBooleano(obj, "publico", false);
+            e.tamano = extraerEntero(obj, "tamano", 0);
+            e.bloqueInicial = extraerEntero(obj, "bloqueInicial", -1);
+            e.cadenaBloques = extraerCadena(obj, "bloques", "");
+            e.detalle = extraerCadena(obj, "detalle", "");
+            resultado.agregar(e);
         }
         return resultado;
     }
@@ -1103,6 +1221,212 @@ public class GestorSistemaArchivos {
     private static class RutaDirectorio {
         String ruta;
         Directorio directorio;
+    }
+
+    private static class EntradaJournal {
+        int id;
+        String operacion;
+        String estado;
+        String rutaArchivo;
+        String padreRuta;
+        String nombreArchivo;
+        String duenoArchivo;
+        boolean publico;
+        int tamano;
+        int bloqueInicial;
+        String cadenaBloques;
+        String detalle;
+    }
+
+    private static class SnapshotArchivoEliminado {
+        String rutaArchivo;
+        String padreRuta;
+        String nombre;
+        String dueno;
+        boolean publico;
+        int tamano;
+        int bloqueInicial;
+        String cadenaBloques;
+    }
+
+    private EntradaJournal registrarEntradaPendiente(TipoOperacion operacion, Archivo archivo, SnapshotArchivoEliminado snapshot) {
+        EntradaJournal entrada = new EntradaJournal();
+        entrada.id = contadorTransacciones++;
+        entrada.operacion = operacion.name();
+        entrada.estado = "PENDIENTE";
+
+        if (archivo != null) {
+            entrada.rutaArchivo = construirRutaElemento(archivo);
+            entrada.padreRuta = archivo.obtenerPadre() == null ? null : construirRutaElemento(archivo.obtenerPadre());
+            entrada.nombreArchivo = archivo.obtenerNombre();
+            entrada.duenoArchivo = archivo.obtenerDueno();
+            entrada.publico = archivo.esPublico();
+            entrada.tamano = archivo.obtenerTamano();
+            entrada.bloqueInicial = archivo.obtenerBloqueInicial();
+        }
+
+        if (snapshot != null) {
+            entrada.rutaArchivo = snapshot.rutaArchivo;
+            entrada.padreRuta = snapshot.padreRuta;
+            entrada.nombreArchivo = snapshot.nombre;
+            entrada.duenoArchivo = snapshot.dueno;
+            entrada.publico = snapshot.publico;
+            entrada.tamano = snapshot.tamano;
+            entrada.bloqueInicial = snapshot.bloqueInicial;
+            entrada.cadenaBloques = snapshot.cadenaBloques;
+        }
+
+        if (entrada.cadenaBloques == null) {
+            entrada.cadenaBloques = "";
+        }
+        entrada.detalle = "Registrada como pendiente";
+        journal.agregar(entrada);
+        return entrada;
+    }
+
+    private void confirmarEntradaJournal(EntradaJournal entrada, String detalle) {
+        if (entrada == null) {
+            return;
+        }
+        entrada.estado = "CONFIRMADA";
+        entrada.detalle = detalle;
+    }
+
+    private void abortarEntradaJournal(EntradaJournal entrada, String detalle) {
+        if (entrada == null) {
+            return;
+        }
+        entrada.estado = "ABORTADA";
+        entrada.detalle = detalle;
+    }
+
+    private int calcularSiguienteTransaccion() {
+        int max = 0;
+        for (int i = 0; i < journal.obtenerTamano(); i++) {
+            EntradaJournal e = journal.obtener(i);
+            if (e.id > max) {
+                max = e.id;
+            }
+        }
+        return max + 1;
+    }
+
+    private SnapshotArchivoEliminado crearSnapshotArchivo(Archivo archivo) {
+        SnapshotArchivoEliminado snapshot = new SnapshotArchivoEliminado();
+        snapshot.rutaArchivo = construirRutaElemento(archivo);
+        snapshot.padreRuta = archivo.obtenerPadre() == null ? null : construirRutaElemento(archivo.obtenerPadre());
+        snapshot.nombre = archivo.obtenerNombre();
+        snapshot.dueno = archivo.obtenerDueno();
+        snapshot.publico = archivo.esPublico();
+        snapshot.tamano = archivo.obtenerTamano();
+        snapshot.bloqueInicial = archivo.obtenerBloqueInicial();
+        snapshot.cadenaBloques = serializarCadenaBloques(archivo.obtenerBloqueInicial());
+        return snapshot;
+    }
+
+    private String serializarCadenaBloques(int bloqueInicial) {
+        if (bloqueInicial < 0) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int actual = bloqueInicial;
+        while (actual != -1 && actual < disco.obtenerCantidadBloques()) {
+            Bloque b = disco.obtenerBloque(actual);
+            sb.append(actual).append(":").append(b.obtenerSiguienteBloque());
+            actual = b.obtenerSiguienteBloque();
+            if (actual != -1) {
+                sb.append(";");
+            }
+        }
+        return sb.toString();
+    }
+
+    private void restaurarCadenaBloques(String cadena, String nombreArchivo) {
+        if (cadena == null || cadena.isEmpty()) {
+            return;
+        }
+
+        String[] partes = cadena.split(";");
+        for (String parte : partes) {
+            String[] tokens = parte.split(":");
+            if (tokens.length != 2) {
+                continue;
+            }
+            int id = Integer.parseInt(tokens[0]);
+            int sig = Integer.parseInt(tokens[1]);
+            if (id >= 0 && id < disco.obtenerCantidadBloques()) {
+                disco.ocuparBloque(id, nombreArchivo, sig);
+            }
+        }
+    }
+
+    private void deshacerCreatePendiente(EntradaJournal entrada) {
+        ElementoSistema elemento = buscarElementoPorRuta(entrada.rutaArchivo);
+        if (elemento instanceof Archivo) {
+            eliminarElemento(elemento);
+        }
+    }
+
+    private void deshacerDeletePendiente(EntradaJournal entrada) {
+        if (buscarElementoPorRuta(entrada.rutaArchivo) != null) {
+            return;
+        }
+
+        Directorio padre = entrada.padreRuta == null ? raiz : buscarDirectorioPorRutaEnArbol(entrada.padreRuta);
+        if (padre == null) {
+            padre = raiz;
+        }
+
+        Archivo archivo = new Archivo(entrada.nombreArchivo, entrada.duenoArchivo, padre, Math.max(1, entrada.tamano));
+        archivo.establecerPublico(entrada.publico);
+        archivo.establecerBloqueInicial(entrada.bloqueInicial);
+        padre.agregarHijo(archivo);
+        todosLosArchivos.agregar(archivo);
+
+        restaurarCadenaBloques(entrada.cadenaBloques, entrada.nombreArchivo);
+    }
+
+    private ElementoSistema buscarElementoPorRuta(String ruta) {
+        if (ruta == null || ruta.isEmpty()) {
+            return null;
+        }
+        if (ruta.equals("/" + raiz.obtenerNombre())) {
+            return raiz;
+        }
+
+        String[] partes = ruta.split("/");
+        Directorio actual = raiz;
+        for (int i = 2; i < partes.length; i++) {
+            String segmento = partes[i];
+            ElementoSistema encontrado = null;
+            for (int j = 0; j < actual.obtenerHijos().obtenerTamano(); j++) {
+                ElementoSistema hijo = actual.obtenerHijos().obtener(j);
+                if (hijo.obtenerNombre().equals(segmento)) {
+                    encontrado = hijo;
+                    break;
+                }
+            }
+            if (encontrado == null) {
+                return null;
+            }
+            if (i == partes.length - 1) {
+                return encontrado;
+            }
+            if (!(encontrado instanceof Directorio)) {
+                return null;
+            }
+            actual = (Directorio) encontrado;
+        }
+        return null;
+    }
+
+    private Directorio buscarDirectorioPorRutaEnArbol(String ruta) {
+        ElementoSistema elemento = buscarElementoPorRuta(ruta);
+        if (elemento instanceof Directorio) {
+            return (Directorio) elemento;
+        }
+        return null;
     }
 
     private boolean intentarAdquirirLock(Archivo archivo, Proceso proceso) {

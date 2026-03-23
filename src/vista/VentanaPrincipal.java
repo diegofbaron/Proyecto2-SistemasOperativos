@@ -29,6 +29,9 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnAplicarSesion;
     private JButton btnGuardarEstado;
     private JButton btnCargarEstado;
+    private JButton btnSimularFallo;
+    private JButton btnRecuperarJournal;
+    private JLabel lblPoliticaActiva;
     private JLabel lblCabezalActual;
     private JLabel lblDesplazamiento;
 
@@ -63,7 +66,9 @@ public class VentanaPrincipal extends JFrame {
 
         add(panelCentral, BorderLayout.CENTER);
 
-        JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 10));
+        JPanel panelControles = new JPanel(new GridLayout(2, 1, 0, 4));
+        JPanel filaSuperior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        JPanel filaInferior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         
         comboModoUsuario = new JComboBox<>(new String[]{"Modo Administrador", "Modo Usuario"});
         btnCrear = new JButton("Crear Archivo/Directorio");
@@ -77,27 +82,37 @@ public class VentanaPrincipal extends JFrame {
         btnAplicarSesion = new JButton("Aplicar Sesión");
         btnGuardarEstado = new JButton("Guardar JSON");
         btnCargarEstado = new JButton("Cargar JSON");
+        btnSimularFallo = new JButton("Simular Fallo: OFF");
+        btnRecuperarJournal = new JButton("Recuperar Journal");
+        lblPoliticaActiva = new JLabel();
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
 
-        panelControles.add(new JLabel("Modo:"));
-        panelControles.add(comboModoUsuario);
-        panelControles.add(new JLabel("Usuario:"));
-        panelControles.add(txtUsuario);
-        panelControles.add(btnAplicarSesion);
-        panelControles.add(btnCrear);
-        panelControles.add(btnRenombrar);
-        panelControles.add(btnEliminar);
-        panelControles.add(new JLabel("Política:"));
-        panelControles.add(comboPolitica);
-        panelControles.add(new JLabel("Cabezal inicial:"));
-        panelControles.add(spinnerCabezalInicial);
-        panelControles.add(chkDireccionAscendente);
-        panelControles.add(btnAplicarPlanificador);
-        panelControles.add(btnGuardarEstado);
-        panelControles.add(btnCargarEstado);
-        panelControles.add(lblCabezalActual);
-        panelControles.add(lblDesplazamiento);
+        filaSuperior.add(new JLabel("Modo:"));
+        filaSuperior.add(comboModoUsuario);
+        filaSuperior.add(new JLabel("Usuario:"));
+        filaSuperior.add(txtUsuario);
+        filaSuperior.add(btnAplicarSesion);
+        filaSuperior.add(btnCrear);
+        filaSuperior.add(btnRenombrar);
+        filaSuperior.add(btnEliminar);
+        filaSuperior.add(btnGuardarEstado);
+        filaSuperior.add(btnCargarEstado);
+
+        filaInferior.add(new JLabel("Política:"));
+        filaInferior.add(comboPolitica);
+        filaInferior.add(new JLabel("Cabezal inicial:"));
+        filaInferior.add(spinnerCabezalInicial);
+        filaInferior.add(chkDireccionAscendente);
+        filaInferior.add(btnAplicarPlanificador);
+        filaInferior.add(btnSimularFallo);
+        filaInferior.add(btnRecuperarJournal);
+        filaInferior.add(lblPoliticaActiva);
+        filaInferior.add(lblCabezalActual);
+        filaInferior.add(lblDesplazamiento);
+
+        panelControles.add(filaSuperior);
+        panelControles.add(filaInferior);
 
         add(panelControles, BorderLayout.SOUTH);
 
@@ -109,6 +124,8 @@ public class VentanaPrincipal extends JFrame {
         comboModoUsuario.addActionListener(e -> aplicarSesionActual());
         btnGuardarEstado.addActionListener(e -> accionGuardarEstado());
         btnCargarEstado.addActionListener(e -> accionCargarEstado());
+        btnSimularFallo.addActionListener(e -> accionToggleFallo());
+        btnRecuperarJournal.addActionListener(e -> accionRecuperarJournal());
 
         actualizarArbol();
         actualizarDisco();
@@ -214,6 +231,22 @@ public class VentanaPrincipal extends JFrame {
         actualizarEstadoPlanificador();
     }
 
+    private void accionToggleFallo() {
+        boolean activar = !gestor.estaSimulacionFalloActiva();
+        gestor.configurarSimulacionFallo(activar);
+        actualizarEstadoPlanificador();
+    }
+
+    private void accionRecuperarJournal() {
+        int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
+        actualizarArbol();
+        actualizarDisco();
+        actualizarTabla();
+        actualizarEstadoPlanificador();
+        expandirTodoElArbol();
+        JOptionPane.showMessageDialog(this, "Recuperación finalizada. Entradas procesadas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private void accionGuardarEstado() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Guardar estado en JSON");
@@ -253,6 +286,16 @@ public class VentanaPrincipal extends JFrame {
         actualizarTabla();
         actualizarEstadoPlanificador();
         expandirTodoElArbol();
+
+        int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
+        if (recuperadas > 0) {
+            actualizarArbol();
+            actualizarDisco();
+            actualizarTabla();
+            actualizarEstadoPlanificador();
+            expandirTodoElArbol();
+            JOptionPane.showMessageDialog(this, "Se recuperaron " + recuperadas + " transacciones pendientes del journal.", "Recuperación automática", JOptionPane.INFORMATION_MESSAGE);
+        }
 
         JOptionPane.showMessageDialog(this, "Estado cargado correctamente.", "Cargar JSON", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -300,8 +343,10 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private void actualizarEstadoPlanificador() {
+        lblPoliticaActiva.setText("Política activa: " + gestor.obtenerPoliticaActiva());
         lblCabezalActual.setText("Cabezal actual: " + gestor.obtenerPosicionCabezal());
         lblDesplazamiento.setText("Desplazamiento: " + gestor.obtenerDesplazamientoCabezal());
+        btnSimularFallo.setText(gestor.estaSimulacionFalloActiva() ? "Simular Fallo: ON" : "Simular Fallo: OFF");
     }
 
     private void actualizarArbol() {
