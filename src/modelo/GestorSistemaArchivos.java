@@ -113,6 +113,29 @@ public class GestorSistemaArchivos {
         return null;
     }
 
+    public String solicitarOperacionArchivo(String nombreArchivo, TipoOperacion operacion) {
+        if (operacion == null || operacion == TipoOperacion.CREAR) {
+            return "La operación solicitada no es válida para este método.";
+        }
+
+        Archivo archivo = buscarArchivoPorNombre(nombreArchivo);
+        if (archivo == null) {
+            return "No existe un archivo con ese nombre.";
+        }
+
+        int posicionSolicitud = archivo.obtenerBloqueInicial() >= 0 ? archivo.obtenerBloqueInicial() : estimarPosicionSolicitudCreacion();
+        Proceso p = new Proceso(contadorProcesos++, operacion, archivo, archivo.obtenerTamano(), posicionSolicitud);
+        p.establecerEstado(EstadoProceso.LISTO);
+        colaProcesos.encolar(p);
+        historialProcesos.agregar(p);
+
+        despacharSiguienteProceso();
+        if (p.obtenerEstado() == EstadoProceso.BLOQUEADO) {
+            return p.obtenerMensajeResultado();
+        }
+        return null;
+    }
+
     public String renombrarElemento(ElementoSistema elemento, String nuevoNombre) {
         if (elemento == null) {
             return "Debes seleccionar un elemento para renombrar.";
@@ -191,8 +214,30 @@ public class GestorSistemaArchivos {
             return;
         }
 
-        p.establecerEstado(EstadoProceso.BLOQUEADO);
-        p.establecerMensajeResultado("Operación no soportada por el despachador actual.");
+        Archivo archivoDestino = p.obtenerArchivoDestino();
+        if (archivoDestino == null) {
+            p.establecerEstado(EstadoProceso.BLOQUEADO);
+            p.establecerMensajeResultado("El proceso no tiene archivo destino.");
+            return;
+        }
+
+        if (!intentarAdquirirLock(archivoDestino, p)) {
+            p.establecerEstado(EstadoProceso.BLOQUEADO);
+            p.establecerMensajeResultado("Recurso bloqueado. Proceso en espera de lock.");
+            archivoDestino.obtenerColaEspera().encolar(p);
+            return;
+        }
+
+        p.establecerEstado(EstadoProceso.TERMINADO);
+        p.establecerMensajeResultado("Completado con lock " + tipoLockDeOperacion(p.obtenerOperacion()));
+
+        if (p.obtenerOperacion() == TipoOperacion.ELIMINAR) {
+            eliminarElemento(archivoDestino);
+        }
+
+        liberarLock(archivoDestino, p);
+        desbloquearProcesosEnEspera(archivoDestino);
+        return;
     }
 
     private boolean asignarBloquesAArchivo(Archivo archivo) {
@@ -238,6 +283,17 @@ public class GestorSistemaArchivos {
             }
         }
         return null;
+    }
+
+    public String obtenerResumenLockArchivo(String nombreArchivo) {
+        Archivo archivo = buscarArchivoPorNombre(nombreArchivo);
+        if (archivo == null) {
+            return "Archivo no encontrado";
+        }
+
+        int enEspera = archivo.obtenerColaEspera().obtenerTamano();
+        String escritor = archivo.tieneLockEscrituraActivo() ? String.valueOf(archivo.obtenerProcesoEscritor()) : "-";
+        return "Lectores=" + archivo.obtenerLectoresActivos() + ", Escritor=" + escritor + ", Espera=" + enEspera;
     }
 
     public void eliminarElemento(ElementoSistema elemento) {
@@ -462,5 +518,62 @@ public class GestorSistemaArchivos {
             }
         }
         return libres;
+    }
+
+    private boolean intentarAdquirirLock(Archivo archivo, Proceso proceso) {
+        TipoOperacion operacion = proceso.obtenerOperacion();
+
+        if (operacion == TipoOperacion.LEER) {
+            if (archivo.tieneConflictoLectura()) {
+                return false;
+            }
+            archivo.tomarLockLectura();
+            return true;
+        }
+
+        if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
+            if (!archivo.puedeTomarLockEscritura()) {
+                return false;
+            }
+            archivo.tomarLockEscritura(proceso.obtenerId());
+            return true;
+        }
+
+        return false;
+    }
+
+    private void liberarLock(Archivo archivo, Proceso proceso) {
+        TipoOperacion operacion = proceso.obtenerOperacion();
+        if (operacion == TipoOperacion.LEER) {
+            archivo.liberarLockLectura();
+            return;
+        }
+
+        if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
+            archivo.liberarLockEscritura(proceso.obtenerId());
+        }
+    }
+
+    private void desbloquearProcesosEnEspera(Archivo archivo) {
+        Cola<Proceso> espera = archivo.obtenerColaEspera();
+        while (!espera.estaVacia()) {
+            Proceso procesoEnEspera = espera.desencolar();
+            if (procesoEnEspera == null) {
+                continue;
+            }
+            procesoEnEspera.establecerEstado(EstadoProceso.LISTO);
+            procesoEnEspera.establecerMensajeResultado("Reintentando operación tras liberar lock.");
+            colaProcesos.encolar(procesoEnEspera);
+        }
+    }
+
+    private String tipoLockDeOperacion(TipoOperacion operacion) {
+        if (operacion == TipoOperacion.LEER) {
+            return "compartido";
+        }
+        if (operacion == TipoOperacion.ACTUALIZAR || operacion == TipoOperacion.ELIMINAR) {
+            return "exclusivo";
+        }
+        return "N/A";
     }
 }

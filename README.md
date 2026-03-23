@@ -10,3 +10,5 @@
 - Documento: [docs/paso-03-motor-procesos.md](docs/paso-03-motor-procesos.md)
 - Paso 4 (Planificador de disco): completado.
 - Documento: [docs/paso-04-planificador-disco.md](docs/paso-04-planificador-disco.md)
+- Paso 5 (Concurrencia y locks): completado.
+- Documento: [docs/paso-05-concurrencia-locks.md](docs/paso-05-concurrencia-locks.md)

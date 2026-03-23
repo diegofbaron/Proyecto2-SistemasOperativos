@@ -4,19 +4,26 @@
  */
 package modelo;
 
+import estructuras.Cola;
 import java.awt.Color;
 
 public class Archivo extends ElementoSistema {
     private int tamanoBloques;
     private int bloqueInicial;
-    private boolean bloqueado;
+    private int lectoresActivos;
+    private boolean lockEscrituraActivo;
+    private int procesoEscritor;
+    private Cola<Proceso> colaEspera;
     private Color color;
 
     public Archivo(String nombre, String dueno, Directorio padre, int tamanoBloques) {
         super(nombre, dueno, padre);
         this.tamanoBloques = tamanoBloques;
         this.bloqueInicial = -1;
-        this.bloqueado = false;
+        this.lectoresActivos = 0;
+        this.lockEscrituraActivo = false;
+        this.procesoEscritor = -1;
+        this.colaEspera = new Cola<>();
         this.color = new Color((int)(Math.random() * 200), (int)(Math.random() * 200), (int)(Math.random() * 200));
     }
 
@@ -33,16 +40,50 @@ public class Archivo extends ElementoSistema {
         this.bloqueInicial = bloqueInicial;
     }
 
-    public boolean estaBloqueado() {
-        return bloqueado;
+    public boolean tieneConflictoLectura() {
+        return lockEscrituraActivo;
     }
 
-    public void bloquear() {
-        this.bloqueado = true;
+    public boolean puedeTomarLockEscritura() {
+        return !lockEscrituraActivo && lectoresActivos == 0;
     }
 
-    public void desbloquear() {
-        this.bloqueado = false;
+    public void tomarLockLectura() {
+        lectoresActivos++;
+    }
+
+    public void liberarLockLectura() {
+        if (lectoresActivos > 0) {
+            lectoresActivos--;
+        }
+    }
+
+    public void tomarLockEscritura(int procesoId) {
+        lockEscrituraActivo = true;
+        procesoEscritor = procesoId;
+    }
+
+    public void liberarLockEscritura(int procesoId) {
+        if (lockEscrituraActivo && procesoEscritor == procesoId) {
+            lockEscrituraActivo = false;
+            procesoEscritor = -1;
+        }
+    }
+
+    public int obtenerLectoresActivos() {
+        return lectoresActivos;
+    }
+
+    public boolean tieneLockEscrituraActivo() {
+        return lockEscrituraActivo;
+    }
+
+    public int obtenerProcesoEscritor() {
+        return procesoEscritor;
+    }
+
+    public Cola<Proceso> obtenerColaEspera() {
+        return colaEspera;
     }
 
     public Color obtenerColor() {
