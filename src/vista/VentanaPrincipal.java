@@ -21,6 +21,7 @@ public class VentanaPrincipal extends JFrame {
     private JButton btnCrear;
     private JButton btnRenombrar;
     private JButton btnEliminar;
+    private JButton btnSolicitarProceso;
     private JComboBox<PoliticaPlanificacion> comboPolitica;
     private JSpinner spinnerCabezalInicial;
     private JCheckBox chkDireccionAscendente;
@@ -88,6 +89,7 @@ public class VentanaPrincipal extends JFrame {
         btnCrear = new JButton("Crear Archivo/Directorio");
         btnRenombrar = new JButton("Renombrar");
         btnEliminar = new JButton("Eliminar");
+        btnSolicitarProceso = new JButton("Solicitar E/S");
         comboPolitica = new JComboBox<>(PoliticaPlanificacion.values());
         spinnerCabezalInicial = new JSpinner(new SpinnerNumberModel(50, 0, gestor.obtenerDisco().obtenerCantidadBloques() - 1, 1));
         chkDireccionAscendente = new JCheckBox("Dirección ↑", true);
@@ -113,6 +115,7 @@ public class VentanaPrincipal extends JFrame {
         filaSuperior.add(btnCrear);
         filaSuperior.add(btnRenombrar);
         filaSuperior.add(btnEliminar);
+        filaSuperior.add(btnSolicitarProceso);
         filaSuperior.add(btnGuardarEstado);
         filaSuperior.add(btnCargarEstado);
 
@@ -139,6 +142,7 @@ public class VentanaPrincipal extends JFrame {
         btnCrear.addActionListener(e -> accionCrearElemento());
         btnRenombrar.addActionListener(e -> accionRenombrarElemento());
         btnEliminar.addActionListener(e -> accionEliminarElemento());
+        btnSolicitarProceso.addActionListener(e -> accionSolicitarProceso());
         btnAplicarPlanificador.addActionListener(e -> accionAplicarPlanificador());
         btnAplicarSesion.addActionListener(e -> aplicarSesionActual());
         comboModoUsuario.addActionListener(e -> aplicarSesionActual());
@@ -336,6 +340,53 @@ public class VentanaPrincipal extends JFrame {
             }
             refrescarVistaCompleta(true);
         }
+    }
+
+    private void accionSolicitarProceso() {
+        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodoSeleccionado == null) {
+            JOptionPane.showMessageDialog(this, "Selecciona un archivo para crear la solicitud de E/S.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Object userObject = nodoSeleccionado.getUserObject();
+        if (!(userObject instanceof Archivo)) {
+            JOptionPane.showMessageDialog(this, "La solicitud de E/S debe apuntar a un archivo.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        boolean modoAdmin = comboModoUsuario.getSelectedIndex() == 0;
+        TipoOperacion operacion;
+        if (modoAdmin) {
+            TipoOperacion[] opciones = {TipoOperacion.LEER, TipoOperacion.ACTUALIZAR, TipoOperacion.ELIMINAR};
+            operacion = (TipoOperacion) JOptionPane.showInputDialog(
+                    this,
+                    "Selecciona la operación de E/S:",
+                    "Solicitud de proceso",
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    opciones,
+                    TipoOperacion.LEER
+            );
+            if (operacion == null) {
+                return;
+            }
+        } else {
+            operacion = TipoOperacion.LEER;
+        }
+
+        Archivo archivo = (Archivo) userObject;
+        String error = gestor.solicitarOperacionArchivo(archivo.obtenerNombre(), operacion);
+        if (error != null) {
+            JOptionPane.showMessageDialog(this, error, "Solicitud rechazada", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        refrescarVistaCompleta(true);
+        JOptionPane.showMessageDialog(this,
+                "Solicitud creada y procesada: " + operacion + " sobre " + archivo.obtenerNombre() + ".",
+                "Proceso E/S",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void aplicarSesionActual() {
