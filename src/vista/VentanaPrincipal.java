@@ -212,6 +212,7 @@ public class VentanaPrincipal extends JFrame {
         btnSolicitarProceso.addActionListener(e -> accionSolicitarProceso());
         btnAplicarPlanificador.addActionListener(e -> accionAplicarPlanificador());
         btnAplicarSesion.addActionListener(e -> aplicarSesionActual());
+        txtUsuario.addActionListener(e -> aplicarSesionActual());
         comboModoUsuario.addActionListener(e -> aplicarSesionActual());
         btnGuardarEstado.addActionListener(e -> accionGuardarEstado());
         btnCargarEstado.addActionListener(e -> accionCargarEstado());
@@ -231,6 +232,7 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private void accionCrearElemento() {
+        sincronizarSesionConControles();
         if (comboModoUsuario.getSelectedIndex() != 0) {
             JOptionPane.showMessageDialog(this, "Solo los administradores pueden crear elementos.", "Acceso Denegado", JOptionPane.ERROR_MESSAGE);
             return;
@@ -284,6 +286,7 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private void accionRenombrarElemento() {
+        sincronizarSesionConControles();
         if (comboModoUsuario.getSelectedIndex() != 0) return;
         DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
         if (nodoSeleccionado == null) return;
@@ -369,6 +372,7 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private void accionEliminarElemento() {
+        sincronizarSesionConControles();
         if (comboModoUsuario.getSelectedIndex() != 0) return;
         DefaultMutableTreeNode nodo = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
         if (nodo == null) return;
@@ -387,6 +391,7 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private void accionSolicitarProceso() {
+        sincronizarSesionConControles();
         DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
         if (nodoSeleccionado == null) return;
 
@@ -418,11 +423,17 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private void aplicarSesionActual() {
+        sincronizarSesionConControles();
+        String usuario = gestor.obtenerUsuarioActual();
         boolean modoAdmin = comboModoUsuario.getSelectedIndex() == 0;
-        String usuario = txtUsuario.getText();
-        gestor.configurarSesion(usuario, modoAdmin);
-        txtUsuario.setText(gestor.obtenerUsuarioActual());
         registrarEventoSistema("Cambio de sesion: " + usuario + " (" + (modoAdmin ? "Admin" : "Usuario") + ")");
+        refrescarVistaCompleta(false);
+    }
+
+    private void sincronizarSesionConControles() {
+        boolean modoAdmin = comboModoUsuario.getSelectedIndex() == 0;
+        gestor.configurarSesion(txtUsuario.getText(), modoAdmin);
+        txtUsuario.setText(gestor.obtenerUsuarioActual());
     }
 
     private void actualizarEstadoPlanificador() {
