@@ -837,7 +837,10 @@ public class GestorSistemaArchivos {
             return null;
         }
 
-        boolean esDueno = archivo.obtenerDueno().equalsIgnoreCase(usuarioActual);
+        String duenoNormalizado = normalizarNombre(archivo.obtenerDueno());
+        String usuarioNormalizado = normalizarNombre(usuarioActual);
+        boolean esDueno = duenoNormalizado != null && usuarioNormalizado != null
+                && duenoNormalizado.equalsIgnoreCase(usuarioNormalizado);
         if (operacion == TipoOperacion.LEER) {
             if (esDueno || archivo.esPublico()) {
                 return null;
