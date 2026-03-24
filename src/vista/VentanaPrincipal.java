@@ -132,11 +132,11 @@ public class VentanaPrincipal extends JFrame {
         chkDireccionAscendente.setBackground(Color.WHITE);
         
         btnAplicarPlanificador = new JButton("Ejecutar Planificador");
-        btnAplicarPlanificador.setBackground(new Color(40, 167, 69)); 
-        btnAplicarPlanificador.setForeground(Color.WHITE);
+        btnAplicarPlanificador.setBackground(new Color(33, 87, 164));
+        btnAplicarPlanificador.setForeground(Color.BLACK);
         btnAplicarPlanificador.setFont(new Font("Segoe UI", Font.BOLD, 13));
         btnAplicarPlanificador.setFocusPainted(false);
-        btnAplicarPlanificador.setContentAreaFilled(false); 
+        btnAplicarPlanificador.setContentAreaFilled(true);
         btnAplicarPlanificador.setOpaque(true); 
         
         txtUsuario = new JTextField("admin", 8);
