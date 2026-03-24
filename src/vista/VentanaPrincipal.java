@@ -2,11 +2,21 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
+ */
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
+ */
 package vista;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import modelo.*;
@@ -45,63 +55,103 @@ public class VentanaPrincipal extends JFrame {
     private JTextArea areaChecklist;
     private JTextArea areaSeleccion;
     private JLabel lblUltimaActualizacion;
+    
+    private StringBuilder logEventosSistema = new StringBuilder();
 
     public VentanaPrincipal() {
         gestor = new GestorSistemaArchivos(100); 
         gestor.configurarPlanificador(PoliticaPlanificacion.FIFO, 50, true);
+        registrarEventoSistema("Sistema iniciado. Disco virtual de 100 bloques montado.");
 
         setTitle("Simulador de Sistema de Archivos - Proyecto 2");
-        setSize(1000, 700);
+        setSize(1100, 750);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
+        getContentPane().setBackground(new Color(240, 244, 248)); 
+
+        Font fuenteGeneral = new Font("Segoe UI", Font.PLAIN, 14);
+        Font fuenteTitulos = new Font("Segoe UI", Font.BOLD, 13);
 
         arbolSistema = new JTree();
+        arbolSistema.setFont(fuenteGeneral);
         JScrollPane scrollArbol = new JScrollPane(arbolSistema);
         scrollArbol.setPreferredSize(new Dimension(250, 0));
-        scrollArbol.setBorder(BorderFactory.createTitledBorder("Estructura de Directorios"));
+        scrollArbol.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(180, 180, 180)), 
+            "Estructura de Directorios", 0, 0, fuenteTitulos, new Color(30, 30, 30)));
         add(scrollArbol, BorderLayout.WEST);
 
         JPanel panelCentral = new JPanel(new GridLayout(2, 1, 10, 10));
+        panelCentral.setBackground(new Color(240, 244, 248));
         
         panelDisco = new JPanel();
-        panelDisco.setBackground(Color.DARK_GRAY);
+        panelDisco.setBackground(new Color(40, 44, 52)); 
         JScrollPane scrollDisco = new JScrollPane(panelDisco);
-        scrollDisco.setBorder(BorderFactory.createTitledBorder("Simulación del SD (Bloques)"));
+        scrollDisco.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(180, 180, 180)), 
+            "Mapa del Disco (Bloques)", 0, 0, fuenteTitulos, new Color(30, 30, 30)));
         panelCentral.add(scrollDisco);
 
         tablaAsignacion = new JTable();
+        tablaAsignacion.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        tablaAsignacion.setRowHeight(25);
+        tablaAsignacion.setFillsViewportHeight(true);
         JScrollPane scrollTabla = new JScrollPane(tablaAsignacion);
-        scrollTabla.setBorder(BorderFactory.createTitledBorder("Tabla de Asignación"));
+        scrollTabla.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(180, 180, 180)), 
+            "Tabla de Asignacion de Archivos", 0, 0, fuenteTitulos, new Color(30, 30, 30)));
         panelCentral.add(scrollTabla);
 
         JTabbedPane panelMonitoreo = crearPanelMonitoreo();
+        panelMonitoreo.setFont(new Font("Segoe UI", Font.BOLD, 12));
         JSplitPane splitPrincipal = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, panelCentral, panelMonitoreo);
-        splitPrincipal.setResizeWeight(0.72);
+        splitPrincipal.setResizeWeight(0.70);
         splitPrincipal.setDividerLocation(720);
+        splitPrincipal.setBorder(null);
         add(splitPrincipal, BorderLayout.CENTER);
 
-        JPanel panelControles = new JPanel(new GridLayout(2, 1, 0, 4));
+        JPanel panelControles = new JPanel(new GridLayout(2, 1, 0, 8));
+        panelControles.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        panelControles.setBackground(Color.WHITE);
+        
         JPanel filaSuperior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        filaSuperior.setBackground(Color.WHITE);
         JPanel filaInferior = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        filaInferior.setBackground(Color.WHITE);
         
         comboModoUsuario = new JComboBox<>(new String[]{"Modo Administrador", "Modo Usuario"});
-        btnCrear = new JButton("Crear Archivo/Directorio");
+        btnCrear = new JButton("Crear");
         btnRenombrar = new JButton("Renombrar");
-        btnEliminar = new JButton("Eliminar");
+        btnEliminar = new JButton("Eliminar FS"); 
         btnSolicitarProceso = new JButton("Solicitar E/S");
+        
         comboPolitica = new JComboBox<>(PoliticaPlanificacion.values());
         spinnerCabezalInicial = new JSpinner(new SpinnerNumberModel(50, 0, gestor.obtenerDisco().obtenerCantidadBloques() - 1, 1));
-        chkDireccionAscendente = new JCheckBox("Dirección ↑", true);
-        btnAplicarPlanificador = new JButton("Aplicar Planificador");
+        chkDireccionAscendente = new JCheckBox("Direccion Asc.", true);
+        chkDireccionAscendente.setBackground(Color.WHITE);
+        
+        btnAplicarPlanificador = new JButton("Ejecutar Planificador");
+        btnAplicarPlanificador.setBackground(new Color(40, 167, 69)); 
+        btnAplicarPlanificador.setForeground(Color.WHITE);
+        btnAplicarPlanificador.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        btnAplicarPlanificador.setFocusPainted(false);
+        btnAplicarPlanificador.setContentAreaFilled(false); 
+        btnAplicarPlanificador.setOpaque(true); 
+        
         txtUsuario = new JTextField("admin", 8);
-        btnAplicarSesion = new JButton("Aplicar Sesión");
+        btnAplicarSesion = new JButton("Aplicar Sesion");
         btnGuardarEstado = new JButton("Guardar JSON");
         btnCargarEstado = new JButton("Cargar JSON");
+        
         btnSimularFallo = new JButton("Simular Fallo: OFF");
+        btnSimularFallo.setForeground(Color.RED);
+        btnSimularFallo.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        
         btnRecuperarJournal = new JButton("Recuperar Journal");
-        btnActualizarMonitoreo = new JButton("Actualizar Monitoreo");
+        btnActualizarMonitoreo = new JButton("Actualizar");
         btnValidarPruebas = new JButton("Validar Pruebas");
+        
         lblPoliticaActiva = new JLabel();
         lblCabezalActual = new JLabel();
         lblDesplazamiento = new JLabel();
@@ -112,32 +162,49 @@ public class VentanaPrincipal extends JFrame {
         filaSuperior.add(new JLabel("Usuario:"));
         filaSuperior.add(txtUsuario);
         filaSuperior.add(btnAplicarSesion);
+        filaSuperior.add(new JLabel(" | "));
         filaSuperior.add(btnCrear);
         filaSuperior.add(btnRenombrar);
         filaSuperior.add(btnEliminar);
         filaSuperior.add(btnSolicitarProceso);
+        filaSuperior.add(new JLabel(" | "));
         filaSuperior.add(btnGuardarEstado);
         filaSuperior.add(btnCargarEstado);
 
-        filaInferior.add(new JLabel("Política:"));
+        filaInferior.add(new JLabel("Politica E/S:"));
         filaInferior.add(comboPolitica);
-        filaInferior.add(new JLabel("Cabezal inicial:"));
+        filaInferior.add(new JLabel("Cabezal:"));
         filaInferior.add(spinnerCabezalInicial);
         filaInferior.add(chkDireccionAscendente);
         filaInferior.add(btnAplicarPlanificador);
+        filaInferior.add(new JLabel(" | "));
         filaInferior.add(btnSimularFallo);
         filaInferior.add(btnRecuperarJournal);
         filaInferior.add(btnActualizarMonitoreo);
         filaInferior.add(btnValidarPruebas);
-        filaInferior.add(lblPoliticaActiva);
-        filaInferior.add(lblCabezalActual);
-        filaInferior.add(lblDesplazamiento);
-        filaInferior.add(lblUltimaActualizacion);
 
+        JPanel panelStatus = new JPanel(new FlowLayout(FlowLayout.CENTER, 25, 8));
+        panelStatus.setBackground(new Color(230, 235, 240));
+        panelStatus.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)));
+        
+        lblPoliticaActiva.setFont(fuenteTitulos);
+        lblCabezalActual.setFont(fuenteTitulos);
+        lblDesplazamiento.setFont(fuenteTitulos);
+        lblUltimaActualizacion.setFont(new Font("Segoe UI", Font.ITALIC, 12));
+        
+        panelStatus.add(lblPoliticaActiva);
+        panelStatus.add(lblCabezalActual);
+        panelStatus.add(lblDesplazamiento);
+        panelStatus.add(lblUltimaActualizacion);
+
+        JPanel panelSurCompleto = new JPanel(new BorderLayout());
+        panelSurCompleto.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
         panelControles.add(filaSuperior);
         panelControles.add(filaInferior);
+        panelSurCompleto.add(panelControles, BorderLayout.CENTER);
+        panelSurCompleto.add(panelStatus, BorderLayout.SOUTH);
 
-        add(panelControles, BorderLayout.SOUTH);
+        add(panelSurCompleto, BorderLayout.SOUTH);
 
         btnCrear.addActionListener(e -> accionCrearElemento());
         btnRenombrar.addActionListener(e -> accionRenombrarElemento());
@@ -157,6 +224,11 @@ public class VentanaPrincipal extends JFrame {
         aplicarSesionActual();
         refrescarVistaCompleta(true);
     }
+    
+    private void registrarEventoSistema(String mensaje) {
+        String hora = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        logEventosSistema.insert(0, "[" + hora + "] > " + mensaje + "\n");
+    }
 
     private void accionCrearElemento() {
         if (comboModoUsuario.getSelectedIndex() != 0) {
@@ -166,7 +238,7 @@ public class VentanaPrincipal extends JFrame {
 
         DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
         if (nodoSeleccionado == null) {
-            JOptionPane.showMessageDialog(this, "Por favor, selecciona un directorio en el árbol.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Por favor, selecciona un directorio en el arbol.", "Aviso", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -177,9 +249,8 @@ public class VentanaPrincipal extends JFrame {
         }
 
         Directorio directorioPadre = (Directorio) elementoPadre;
-
         String[] opciones = {"Archivo", "Directorio"};
-        int seleccion = JOptionPane.showOptionDialog(this, "¿Qué deseas crear?", "Crear Elemento",
+        int seleccion = JOptionPane.showOptionDialog(this, "Que deseas crear?", "Crear Elemento",
                 JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opciones, opciones[0]);
 
         if (seleccion == -1) return; 
@@ -189,53 +260,45 @@ public class VentanaPrincipal extends JFrame {
 
         String error;
         if (seleccion == 0) {
-            String tamanoStr = JOptionPane.showInputDialog(this, "Tamaño en bloques:");
+            String tamanoStr = JOptionPane.showInputDialog(this, "Tamano en bloques:");
             try {
                 int tamano = Integer.parseInt(tamanoStr);
-                int visibilidad = JOptionPane.showConfirmDialog(this, "¿Archivo público?", "Visibilidad", JOptionPane.YES_NO_OPTION);
+                int visibilidad = JOptionPane.showConfirmDialog(this, "Archivo publico?", "Visibilidad", JOptionPane.YES_NO_OPTION);
                 boolean publico = visibilidad == JOptionPane.YES_OPTION;
                 error = gestor.crearArchivo(nombre, txtUsuario.getText(), directorioPadre, tamano, publico);
+                if(error == null) registrarEventoSistema("Archivo creado: " + nombre + " (" + tamano + " bloques)");
             } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "El tamaño debe ser un entero positivo.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "El tamano debe ser un entero positivo.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
         } else {
             error = gestor.crearDirectorio(nombre, txtUsuario.getText(), directorioPadre);
+            if(error == null) registrarEventoSistema("Directorio creado: " + nombre);
         }
 
         if (error != null) {
             JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
-
         refrescarVistaCompleta(true);
     }
 
     private void accionRenombrarElemento() {
-        if (comboModoUsuario.getSelectedIndex() != 0) {
-            JOptionPane.showMessageDialog(this, "Solo los administradores pueden renombrar elementos.", "Acceso Denegado", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
+        if (comboModoUsuario.getSelectedIndex() != 0) return;
         DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
-        if (nodoSeleccionado == null) {
-            JOptionPane.showMessageDialog(this, "Por favor, selecciona un elemento para renombrar.", "Aviso", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+        if (nodoSeleccionado == null) return;
 
         ElementoSistema elemento = (ElementoSistema) nodoSeleccionado.getUserObject();
         String nuevoNombre = JOptionPane.showInputDialog(this, "Nuevo nombre:", elemento.obtenerNombre());
-        if (nuevoNombre == null) {
-            return;
-        }
+        if (nuevoNombre == null) return;
 
         String error = gestor.renombrarElemento(elemento, nuevoNombre);
-        if (error != null) {
+        if (error == null) {
+            registrarEventoSistema("Elemento renombrado a: " + nuevoNombre);
+            refrescarVistaCompleta(true);
+        } else {
             JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
-            return;
         }
-
-        refrescarVistaCompleta(true);
     }
 
     private void accionAplicarPlanificador() {
@@ -244,114 +307,92 @@ public class VentanaPrincipal extends JFrame {
         boolean direccionAsc = chkDireccionAscendente.isSelected();
 
         gestor.configurarPlanificador(politica, posicionInicial, direccionAsc);
+        registrarEventoSistema("Planificador configurado -> Politica: " + politica + " | Cabezal: " + posicionInicial);
+        
+        int procesosDespachados = gestor.despacharTodosLosProcesosPendientes();
         refrescarVistaCompleta(false);
+        
+        if(procesosDespachados > 0) {
+            registrarEventoSistema("Planificador ejecuto " + procesosDespachados + " procesos con exito.");
+            JOptionPane.showMessageDialog(this, "Se ejecutaron " + procesosDespachados + " procesos.\nRevisa la pestana 'Terminal / Journal' para el detalle.", "Planificador", JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(this, "El planificador esta listo, pero la Cola de E/S esta vacia.", "Aviso", JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     private void accionToggleFallo() {
         boolean activar = !gestor.estaSimulacionFalloActiva();
         gestor.configurarSimulacionFallo(activar);
+        if(activar) {
+            btnSimularFallo.setText("Simular Fallo: ON");
+            btnSimularFallo.setForeground(Color.RED);
+            registrarEventoSistema("[!] ATENCION: Simulacion de fallos ACTIVADA.");
+        } else {
+            btnSimularFallo.setText("Simular Fallo: OFF");
+            btnSimularFallo.setForeground(Color.GRAY);
+            registrarEventoSistema("Simulacion de fallos DESACTIVADA.");
+        }
         refrescarVistaCompleta(false);
     }
 
     private void accionRecuperarJournal() {
         int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
+        registrarEventoSistema("Recuperacion de Journal ejecutada. Entradas reparadas: " + recuperadas);
         refrescarVistaCompleta(true);
-        JOptionPane.showMessageDialog(this, "Recuperación finalizada. Entradas procesadas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(this, "Recuperacion finalizada. Transacciones restauradas: " + recuperadas, "Journal", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void accionValidarPruebas() {
         estructuras.Lista<String> reporte = gestor.generarReportePruebasRecomendadas();
-        areaPruebas.setText(textoDesdeLista(reporte, "Sin resultados de pruebas."));
-        JOptionPane.showMessageDialog(this, "Validación de pruebas recomendadas completada.", "Paso 11", JOptionPane.INFORMATION_MESSAGE);
+        areaPruebas.setText(textoDesdeLista(reporte, "Sin resultados."));
+        JOptionPane.showMessageDialog(this, "Pruebas recomendadas ejecutadas.", "Validacion", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void accionGuardarEstado() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Guardar estado en JSON");
-        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
-            return;
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            String error = gestor.guardarEstadoEnJson(chooser.getSelectedFile().getAbsolutePath());
+            if (error != null) JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            else JOptionPane.showMessageDialog(this, "Guardado exitoso.");
         }
-
-        String error = gestor.guardarEstadoEnJson(chooser.getSelectedFile().getAbsolutePath());
-        if (error != null) {
-            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-        JOptionPane.showMessageDialog(this, "Estado guardado correctamente.", "Guardar JSON", JOptionPane.INFORMATION_MESSAGE);
-        refrescarVistaCompleta(false);
     }
 
     private void accionCargarEstado() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Cargar estado desde JSON");
-        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
-            return;
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            String error = gestor.cargarEstadoDesdeJson(chooser.getSelectedFile().getAbsolutePath());
+            if (error != null) JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+            else refrescarVistaCompleta(true);
         }
-
-        String error = gestor.cargarEstadoDesdeJson(chooser.getSelectedFile().getAbsolutePath());
-        if (error != null) {
-            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        txtUsuario.setText(gestor.obtenerUsuarioActual());
-        comboModoUsuario.setSelectedIndex(gestor.esModoAdministrador() ? 0 : 1);
-        comboPolitica.setSelectedItem(gestor.obtenerPoliticaActiva());
-        spinnerCabezalInicial.setValue(gestor.obtenerPosicionCabezal());
-        chkDireccionAscendente.setSelected(gestor.esDireccionAscendente());
-
-        refrescarVistaCompleta(true);
-
-        int recuperadas = gestor.ejecutarRecuperacionJournalPendientes();
-        if (recuperadas > 0) {
-            refrescarVistaCompleta(true);
-            JOptionPane.showMessageDialog(this, "Se recuperaron " + recuperadas + " transacciones pendientes del journal.", "Recuperación automática", JOptionPane.INFORMATION_MESSAGE);
-        }
-
-        JOptionPane.showMessageDialog(this, "Estado cargado correctamente.", "Cargar JSON", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void accionEliminarElemento() {
-        if (comboModoUsuario.getSelectedIndex() != 0) {
-            JOptionPane.showMessageDialog(this, "Solo los administradores pueden eliminar elementos.", "Acceso Denegado", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
-        if (nodoSeleccionado == null) {
-            JOptionPane.showMessageDialog(this, "Por favor, selecciona un elemento para eliminar.", "Aviso", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        ElementoSistema elemento = (ElementoSistema) nodoSeleccionado.getUserObject();
-
-        if (elemento.obtenerPadre() == null) {
-            JOptionPane.showMessageDialog(this, "No puedes eliminar el directorio Raíz del sistema.", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        int confirmacion = JOptionPane.showConfirmDialog(this, "¿Estás seguro de que deseas eliminar '" + elemento.obtenerNombre() + "'?", "Confirmar Eliminación", JOptionPane.YES_NO_OPTION);
+        if (comboModoUsuario.getSelectedIndex() != 0) return;
+        DefaultMutableTreeNode nodo = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodo == null) return;
+        ElementoSistema elemento = (ElementoSistema) nodo.getUserObject();
         
+        if (elemento.obtenerPadre() == null) return;
+        
+        int confirmacion = JOptionPane.showConfirmDialog(this, "Estas seguro de que deseas eliminar '" + elemento.obtenerNombre() + "' directamente del FS?", "Confirmar Eliminacion Directa", JOptionPane.YES_NO_OPTION);
         if (confirmacion == JOptionPane.YES_OPTION) {
             String error = gestor.eliminarElementoSeguro(elemento);
-            if (error != null) {
-                JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
-                return;
+            if (error == null) {
+                registrarEventoSistema("Elemento eliminado directamente (FS): " + elemento.obtenerNombre());
+                refrescarVistaCompleta(true); 
             }
-            refrescarVistaCompleta(true);
         }
     }
 
     private void accionSolicitarProceso() {
         DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
-        if (nodoSeleccionado == null) {
-            JOptionPane.showMessageDialog(this, "Selecciona un archivo para crear la solicitud de E/S.", "Aviso", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+        if (nodoSeleccionado == null) return;
 
         Object userObject = nodoSeleccionado.getUserObject();
         if (!(userObject instanceof Archivo)) {
-            JOptionPane.showMessageDialog(this, "La solicitud de E/S debe apuntar a un archivo.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Debe seleccionar un Archivo para E/S.", "Aviso", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -359,18 +400,8 @@ public class VentanaPrincipal extends JFrame {
         TipoOperacion operacion;
         if (modoAdmin) {
             TipoOperacion[] opciones = {TipoOperacion.LEER, TipoOperacion.ACTUALIZAR, TipoOperacion.ELIMINAR};
-            operacion = (TipoOperacion) JOptionPane.showInputDialog(
-                    this,
-                    "Selecciona la operación de E/S:",
-                    "Solicitud de proceso",
-                    JOptionPane.QUESTION_MESSAGE,
-                    null,
-                    opciones,
-                    TipoOperacion.LEER
-            );
-            if (operacion == null) {
-                return;
-            }
+            operacion = (TipoOperacion) JOptionPane.showInputDialog(this, "Selecciona la operacion E/S para enviar a la cola:", "Solicitud", JOptionPane.QUESTION_MESSAGE, null, opciones, TipoOperacion.LEER);
+            if (operacion == null) return;
         } else {
             operacion = TipoOperacion.LEER;
         }
@@ -382,11 +413,8 @@ public class VentanaPrincipal extends JFrame {
             return;
         }
 
+        registrarEventoSistema("Nueva solicitud E/S encolada: [" + operacion + "] sobre " + archivo.obtenerNombre());
         refrescarVistaCompleta(true);
-        JOptionPane.showMessageDialog(this,
-                "Solicitud creada y procesada: " + operacion + " sobre " + archivo.obtenerNombre() + ".",
-                "Proceso E/S",
-                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void aplicarSesionActual() {
@@ -394,98 +422,91 @@ public class VentanaPrincipal extends JFrame {
         String usuario = txtUsuario.getText();
         gestor.configurarSesion(usuario, modoAdmin);
         txtUsuario.setText(gestor.obtenerUsuarioActual());
+        registrarEventoSistema("Cambio de sesion: " + usuario + " (" + (modoAdmin ? "Admin" : "Usuario") + ")");
     }
 
     private void actualizarEstadoPlanificador() {
-        lblPoliticaActiva.setText("Política activa: " + gestor.obtenerPoliticaActiva());
+        lblPoliticaActiva.setText("Politica activa: " + gestor.obtenerPoliticaActiva());
         lblCabezalActual.setText("Cabezal actual: " + gestor.obtenerPosicionCabezal());
-        lblDesplazamiento.setText("Desplazamiento: " + gestor.obtenerDesplazamientoCabezal());
-        btnSimularFallo.setText(gestor.estaSimulacionFalloActiva() ? "Simular Fallo: ON" : "Simular Fallo: OFF");
-        lblUltimaActualizacion.setText("Última actualización: " + java.time.LocalTime.now().withNano(0));
+        lblDesplazamiento.setText("Desplazamiento Total: " + gestor.obtenerDesplazamientoCabezal());
+        lblUltimaActualizacion.setText("Actualizado: " + java.time.LocalTime.now().withNano(0));
     }
 
     private JTabbedPane crearPanelMonitoreo() {
-        areaChecklist = crearAreaMonitoreo();
-        areaSeleccion = crearAreaMonitoreo();
-        areaCola = crearAreaMonitoreo();
-        areaHistorial = crearAreaMonitoreo();
-        areaLocks = crearAreaMonitoreo();
-        areaJournal = crearAreaMonitoreo();
-        areaPruebas = crearAreaMonitoreo();
+        areaChecklist = crearAreaMonitoreo(Color.BLACK, Color.GREEN);
+        areaSeleccion = crearAreaMonitoreo(Color.WHITE, Color.BLACK);
+        areaCola = crearAreaMonitoreo(new Color(255, 250, 205), Color.BLACK); 
+        areaHistorial = crearAreaMonitoreo(Color.WHITE, Color.DARK_GRAY);
+        areaLocks = crearAreaMonitoreo(new Color(255, 228, 225), new Color(180, 0, 0));  
+        areaJournal = crearAreaMonitoreo(new Color(15, 15, 15), new Color(0, 200, 255)); 
+        areaPruebas = crearAreaMonitoreo(Color.WHITE, Color.BLACK);
 
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Checklist", new JScrollPane(areaChecklist));
-        tabs.addTab("Seleccionado", new JScrollPane(areaSeleccion));
-        tabs.addTab("Cola", new JScrollPane(areaCola));
-        tabs.addTab("Historial", new JScrollPane(areaHistorial));
+        tabs.addTab("Terminal / Journal", new JScrollPane(areaJournal));
+        tabs.addTab("Cola Espera", new JScrollPane(areaCola));
+        tabs.addTab("Historial E/S", new JScrollPane(areaHistorial));
+        tabs.addTab("Detalles", new JScrollPane(areaSeleccion));
         tabs.addTab("Locks", new JScrollPane(areaLocks));
-        tabs.addTab("Log", new JScrollPane(areaJournal));
         tabs.addTab("Pruebas", new JScrollPane(areaPruebas));
-        tabs.setPreferredSize(new Dimension(300, 0));
+        tabs.setPreferredSize(new Dimension(360, 0));
         return tabs;
     }
 
-    private JTextArea crearAreaMonitoreo() {
+    private JTextArea crearAreaMonitoreo(Color fondo, Color texto) {
         JTextArea area = new JTextArea();
         area.setEditable(false);
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
-        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        area.setFont(new Font("Consolas", Font.PLAIN, 13));
+        area.setBackground(fondo);
+        area.setForeground(texto);
+        area.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         return area;
     }
 
     private void actualizarPanelMonitoreo() {
-        areaChecklist.setText(construirChecklistVisual());
-        areaCola.setText(textoDesdeLista(gestor.obtenerResumenColaProcesos(), "No hay procesos pendientes."));
-        areaHistorial.setText(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(30), "No hay historial."));
-        areaLocks.setText(textoDesdeLista(gestor.obtenerResumenLocksActivos(), "No hay locks activos."));
-        areaJournal.setText(construirLogConsolidado());
-        areaPruebas.setText(textoDesdeLista(gestor.generarReportePruebasRecomendadas(), "Sin resultados de pruebas."));
+        areaCola.setText("=== PROCESOS ESPERANDO EN COLA ===\n\n" + textoDesdeLista(gestor.obtenerResumenColaProcesos(), ">>> La cola esta vacia."));
+        areaHistorial.setText("=== ULTIMOS PROCESOS EJECUTADOS ===\n\n" + textoDesdeLista(gestor.obtenerResumenHistorialProcesos(30), ">>> Sin historial."));
+        areaLocks.setText("=== ESTADO DE BLOQUEOS (LOCKS) ===\n\n" + textoDesdeLista(gestor.obtenerResumenLocksActivos(), "Ningun archivo bloqueado actualmente."));
+        areaPruebas.setText(textoDesdeLista(gestor.generarReportePruebasRecomendadas(), "Sin resultados."));
+        
+        String journalReal = textoDesdeLista(gestor.obtenerResumenJournal(), ">>> Journal del sistema vacio.");
+        areaJournal.setText(
+            "============================================\n" +
+            "      LOG DE EVENTOS Y JOURNAL SYSTEM       \n" +
+            "============================================\n\n" +
+            "--- EVENTOS DE INTERFAZ Y PLANIFICADOR ---\n" +
+            logEventosSistema.toString() + "\n" +
+            "--- TRANSACCIONES DE DISCO (JOURNAL) ---\n" +
+            journalReal
+        );
         actualizarInfoSeleccionado();
     }
 
     private void actualizarInfoSeleccionado() {
-        DefaultMutableTreeNode nodoSeleccionado = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
-        if (nodoSeleccionado == null) {
-            areaSeleccion.setText("Sin selección.\nSelecciona un archivo o directorio en el JTree.");
+        DefaultMutableTreeNode nodo = (DefaultMutableTreeNode) arbolSistema.getLastSelectedPathComponent();
+        if (nodo == null) {
+            areaSeleccion.setText("Haz clic en un elemento del arbol para ver sus detalles.");
             return;
         }
-
-        Object userObject = nodoSeleccionado.getUserObject();
-        if (!(userObject instanceof ElementoSistema)) {
-            areaSeleccion.setText("Elemento no válido.");
-            return;
-        }
-
-        ElementoSistema elemento = (ElementoSistema) userObject;
+        ElementoSistema elemento = (ElementoSistema) nodo.getUserObject();
         String tipo = (elemento instanceof Directorio) ? "Directorio" : "Archivo";
-        StringBuilder sb = new StringBuilder();
-        sb.append("Tipo: ").append(tipo).append("\n");
-        sb.append("Nombre: ").append(elemento.obtenerNombre()).append("\n");
-        sb.append("Dueño: ").append(elemento.obtenerDueno()).append("\n");
-        sb.append("Tamaño (bloques): ").append(elemento.obtenerTamano()).append("\n");
-        sb.append("Público: ").append(elemento.esPublico() ? "Sí" : "No").append("\n");
-        areaSeleccion.setText(sb.toString());
+        areaSeleccion.setText(
+            "=== DETALLES DEL ELEMENTO ===\n\n" +
+            "Tipo: " + tipo + "\n" +
+            "Nombre: " + elemento.obtenerNombre() + "\n" +
+            "Propietario: " + elemento.obtenerDueno() + "\n" +
+            "Tamano: " + elemento.obtenerTamano() + " bloques\n" +
+            "Permisos: " + (elemento.esPublico() ? "Publico (Lectura)" : "Privado")
+        );
     }
 
-    private String construirChecklistVisual() {
-        String ok = "[OK] ";
+    private String textoDesdeLista(estructuras.Lista<String> lista, String vacio) {
+        if (lista == null || lista.obtenerTamano() == 0) return vacio;
         StringBuilder sb = new StringBuilder();
-        sb.append(ok).append("JTree de directorios").append("\n");
-        sb.append(ok).append("JTable FAT").append("\n");
-        sb.append(ok).append("Vista de bloques de disco").append("\n");
-        sb.append(ok).append("Cola de procesos").append("\n");
-        sb.append(ok).append("Locks activos").append("\n");
-        sb.append(ok).append("Log del sistema").append("\n");
-        return sb.toString();
-    }
-
-    private String construirLogConsolidado() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("== Últimas operaciones (historial) ==\n");
-        sb.append(textoDesdeLista(gestor.obtenerResumenHistorialProcesos(15), "Sin operaciones.")).append("\n");
-        sb.append("== Journal transaccional ==\n");
-        sb.append(textoDesdeLista(gestor.obtenerResumenJournal(), "Sin journal."));
+        for (int i = 0; i < lista.obtenerTamano(); i++) {
+            sb.append("> ").append(lista.obtener(i)).append("\n");
+        }
         return sb.toString();
     }
 
@@ -495,20 +516,7 @@ public class VentanaPrincipal extends JFrame {
         actualizarTabla();
         actualizarEstadoPlanificador();
         actualizarPanelMonitoreo();
-        if (expandirArbol) {
-            expandirTodoElArbol();
-        }
-    }
-
-    private String textoDesdeLista(estructuras.Lista<String> lista, String vacio) {
-        if (lista == null || lista.obtenerTamano() == 0) {
-            return vacio;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < lista.obtenerTamano(); i++) {
-            sb.append(lista.obtener(i)).append("\n");
-        }
-        return sb.toString();
+        if (expandirArbol) expandirTodoElArbol();
     }
 
     private void actualizarArbol() {
@@ -522,8 +530,7 @@ public class VentanaPrincipal extends JFrame {
         if (elemento instanceof Directorio) {
             Directorio dir = (Directorio) elemento;
             for (int i = 0; i < dir.obtenerHijos().obtenerTamano(); i++) {
-                ElementoSistema hijo = dir.obtenerHijos().obtener(i);
-                nodo.add(crearNodoVisual(hijo));
+                nodo.add(crearNodoVisual(dir.obtenerHijos().obtener(i)));
             }
         }
         return nodo;
@@ -532,37 +539,31 @@ public class VentanaPrincipal extends JFrame {
     private void actualizarDisco() {
         panelDisco.removeAll();
         int totalBloques = gestor.obtenerDisco().obtenerCantidadBloques();
-        panelDisco.setLayout(new GridLayout(10, 10, 2, 2));
+        panelDisco.setLayout(new GridLayout(10, 10, 4, 4));
 
         for (int i = 0; i < totalBloques; i++) {
             Bloque b = gestor.obtenerDisco().obtenerBloque(i);
             JPanel panelBloque = new JPanel(new BorderLayout());
-            panelBloque.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+            panelBloque.setBorder(BorderFactory.createLineBorder(new Color(20, 20, 20), 1));
             
             JLabel lblId = new JLabel(String.valueOf(b.obtenerId()), SwingConstants.CENTER);
-            lblId.setForeground(Color.WHITE);
+            lblId.setForeground(new Color(200, 200, 200));
+            lblId.setFont(new Font("Segoe UI", Font.PLAIN, 10));
             panelBloque.add(lblId, BorderLayout.CENTER);
 
             if (b.estaOcupado()) {
                 Archivo a = gestor.buscarArchivoPorNombre(b.obtenerNombreArchivo());
                 if (a != null) {
                     panelBloque.setBackground(a.obtenerColor());
-                    String txtProceso = b.obtenerProcesoOcupante() >= 0 ? "P" + b.obtenerProcesoOcupante() : "P-";
+                    lblId.setForeground(Color.WHITE);
+                    String txtProceso = b.obtenerProcesoOcupante() >= 0 ? "P" + b.obtenerProcesoOcupante() : "";
                     JLabel lblProceso = new JLabel(txtProceso, SwingConstants.CENTER);
                     lblProceso.setForeground(Color.WHITE);
-                    lblProceso.setFont(new Font("Arial", Font.BOLD, 10));
+                    lblProceso.setFont(new Font("Segoe UI", Font.BOLD, 11));
                     panelBloque.add(lblProceso, BorderLayout.NORTH);
-
-                    String txtSiguiente = b.obtenerSiguienteBloque() != -1 ? "->" + b.obtenerSiguienteBloque() : "Fin";
-                    JLabel lblSig = new JLabel(txtSiguiente, SwingConstants.CENTER);
-                    lblSig.setForeground(Color.WHITE);
-                    lblSig.setFont(new Font("Arial", Font.BOLD, 10));
-                    panelBloque.add(lblSig, BorderLayout.SOUTH);
-                    panelBloque.setToolTipText("Archivo: " + b.obtenerNombreArchivo() + " | Proceso: " + txtProceso);
                 }
             } else {
-                panelBloque.setBackground(Color.GRAY);
-                panelBloque.setToolTipText("Bloque libre");
+                panelBloque.setBackground(new Color(70, 75, 80)); 
             }
             panelDisco.add(panelBloque);
         }
@@ -571,7 +572,7 @@ public class VentanaPrincipal extends JFrame {
     }
 
     private void actualizarTabla() {
-        String[] columnas = {"Nombre Archivo", "Bloques Asignados", "Primer Bloque", "Color (RGB)"};
+        String[] columnas = {"Archivo", "Bloques", "Inicio", "Color"};
         estructuras.Lista<Archivo> archivos = gestor.obtenerTodosLosArchivos();
         Object[][] datos = new Object[archivos.obtenerTamano()][4];
 
@@ -580,10 +581,11 @@ public class VentanaPrincipal extends JFrame {
             datos[i][0] = a.obtenerNombre();
             datos[i][1] = a.obtenerTamano();
             datos[i][2] = a.obtenerBloqueInicial();
+            
+            // VOLVEMOS AL FORMATO RGB SEGURO EN TEXTO:
             Color c = a.obtenerColor();
-            datos[i][3] = "RGB(" + c.getRed() + ", " + c.getGreen() + ", " + c.getBlue() + ")";
+            datos[i][3] = "RGB(" + c.getRed() + ", " + c.getGreen() + ", " + c.getBlue() + ")"; 
         }
-
         tablaAsignacion.setModel(new DefaultTableModel(datos, columnas));
     }
 
@@ -594,12 +596,7 @@ public class VentanaPrincipal extends JFrame {
     }
 
     public static void main(String[] args) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) {}
-
-        SwingUtilities.invokeLater(() -> {
-            new VentanaPrincipal().setVisible(true);
-        });
+        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception e) {}
+        SwingUtilities.invokeLater(() -> new VentanaPrincipal().setVisible(true));
     }
 }

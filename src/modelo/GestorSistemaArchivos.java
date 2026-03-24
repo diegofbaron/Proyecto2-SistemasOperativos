@@ -395,21 +395,18 @@ public class GestorSistemaArchivos {
 
     public int ejecutarRecuperacionJournalPendientes() {
         int recuperadas = 0;
+        // Recorremos el journal buscando lo que quedó a medias
         for (int i = 0; i < journal.obtenerTamano(); i++) {
             EntradaJournal entrada = journal.obtener(i);
-            if (!"PENDIENTE".equals(entrada.estado)) {
-                continue;
+            
+            // Accedemos a la variable pública 'estado' directamente
+            if (entrada.estado != null && (entrada.estado.equalsIgnoreCase("PENDIENTE") || 
+                entrada.estado.equalsIgnoreCase("FALLO") || entrada.estado.equalsIgnoreCase("ABORTADA"))) {
+                
+                // Cambiamos el estado a RECUPERADO
+                entrada.estado = "RECUPERADO";
+                recuperadas++;
             }
-
-            if (TipoOperacion.CREAR.name().equals(entrada.operacion)) {
-                deshacerCreatePendiente(entrada);
-            } else if (TipoOperacion.ELIMINAR.name().equals(entrada.operacion)) {
-                deshacerDeletePendiente(entrada);
-            }
-
-            entrada.estado = "ABORTADA";
-            entrada.detalle = "UNDO aplicado en recuperación";
-            recuperadas++;
         }
         return recuperadas;
     }
@@ -542,10 +539,9 @@ public class GestorSistemaArchivos {
         colaProcesos.encolar(p);
         historialProcesos.agregar(p);
 
-        despacharSiguienteProceso();
-        if (p.obtenerEstado() == EstadoProceso.BLOQUEADO) {
-            return p.obtenerMensajeResultado();
-        }
+        // Ya NO llamamos a despacharSiguienteProceso(); aquí.
+        // Dejamos que el proceso espere en la COLA hasta aplicar el planificador.
+        
         return null;
     }
 
@@ -597,14 +593,23 @@ public class GestorSistemaArchivos {
     }
 
     public int despacharTodosLosProcesosPendientes() {
-        int procesosEjecutados = 0;
+        int procesosDespachados = 0;
+        
+        // Recorremos la cola hasta que quede vacía
         while (!colaProcesos.estaVacia()) {
-            Proceso ejecutado = despacharSiguienteProceso();
-            if (ejecutado != null) {
-                procesosEjecutados++;
+            Proceso p = colaProcesos.desencolar();
+            if (p != null) {
+                // 1. Simular el movimiento del cabezal hacia donde está el archivo
+                int distancia = Math.abs(posicionCabezal - p.obtenerPosicionSolicitudDisco());
+                desplazamientoCabezal += distancia;
+                posicionCabezal = p.obtenerPosicionSolicitudDisco();
+
+                // 2. Ejecutar la operación (Leer, Actualizar, Eliminar)
+                ejecutarProceso(p);
+                procesosDespachados++;
             }
         }
-        return procesosEjecutados;
+        return procesosDespachados;
     }
 
     public int obtenerCantidadProcesosPendientes() {
@@ -634,55 +639,63 @@ public class GestorSistemaArchivos {
 
                 confirmarEntradaJournal(entrada, "Commit exitoso CREATE");
                 p.establecerEstado(EstadoProceso.TERMINADO);
-                p.establecerMensajeResultado("Completado");
+                p.establecerMensajeResultado("Creación completada y bloques asignados.");
             } else {
-                abortarEntradaJournal(entrada, "No hay espacio suficiente");
                 p.establecerEstado(EstadoProceso.BLOQUEADO);
-                p.establecerMensajeResultado("No hay suficientes bloques disponibles para crear el archivo.");
+                p.establecerMensajeResultado("Fallo al asignar bloques (espacio insuficiente).");
+                entrada.estado = "ABORTADA";
+                entrada.detalle = "Fallo por falta de espacio";
             }
-            return;
-        }
-
-        Archivo archivoDestino = p.obtenerArchivoDestino();
-        if (archivoDestino == null) {
-            p.establecerEstado(EstadoProceso.BLOQUEADO);
-            p.establecerMensajeResultado("El proceso no tiene archivo destino.");
-            return;
-        }
-
-        if (!intentarAdquirirLock(archivoDestino, p)) {
-            p.establecerEstado(EstadoProceso.BLOQUEADO);
-            p.establecerMensajeResultado("Recurso bloqueado. Proceso en espera de lock.");
-            archivoDestino.obtenerColaEspera().encolar(p);
-            return;
-        }
-
-        marcarProcesoEnCadenaBloques(archivoDestino, p.obtenerId());
-
-        p.establecerEstado(EstadoProceso.TERMINADO);
-        p.establecerMensajeResultado("Completado con lock " + tipoLockDeOperacion(p.obtenerOperacion()));
-
-        if (p.obtenerOperacion() == TipoOperacion.ELIMINAR) {
-            SnapshotArchivoEliminado snapshot = crearSnapshotArchivo(archivoDestino);
-            EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.ELIMINAR, archivoDestino, snapshot);
-
-            eliminarElemento(archivoDestino);
-
-            if (simularFalloAntesCommit) {
+        } else {
+            Archivo archivoDestino = p.obtenerArchivoDestino();
+            if (!intentarAdquirirLock(archivoDestino, p)) {
                 p.establecerEstado(EstadoProceso.BLOQUEADO);
-                p.establecerMensajeResultado("Fallo simulado antes del commit. Eliminación quedó PENDIENTE en journal.");
-                entrada.detalle = "Fallo simulado antes de commit";
-                liberarLock(archivoDestino, p);
-                desbloquearProcesosEnEspera(archivoDestino);
+                p.establecerMensajeResultado("Archivo bloqueado. Proceso en espera de lock.");
+                archivoDestino.obtenerColaEspera().encolar(p);
                 return;
             }
 
-            confirmarEntradaJournal(entrada, "Commit exitoso DELETE");
-        }
+            marcarProcesoEnCadenaBloques(archivoDestino, p.obtenerId());
+            p.establecerEstado(EstadoProceso.TERMINADO);
+            p.establecerMensajeResultado("Completado con lock " + tipoLockDeOperacion(p.obtenerOperacion()));
 
-        liberarLock(archivoDestino, p);
-        desbloquearProcesosEnEspera(archivoDestino);
-        return;
+            if (p.obtenerOperacion() == TipoOperacion.ELIMINAR) {
+                SnapshotArchivoEliminado snapshot = crearSnapshotArchivo(archivoDestino);
+                EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.ELIMINAR, archivoDestino, snapshot);
+
+                eliminarElemento(archivoDestino);
+
+                if (simularFalloAntesCommit) {
+                    p.establecerEstado(EstadoProceso.BLOQUEADO);
+                    p.establecerMensajeResultado("Fallo simulado antes del commit. Eliminación quedó PENDIENTE en journal.");
+                    entrada.detalle = "Fallo simulado antes de commit";
+                    liberarLock(archivoDestino, p);
+                    desbloquearProcesosEnEspera(archivoDestino);
+                    return;
+                }
+                confirmarEntradaJournal(entrada, "Commit exitoso DELETE");
+                
+            } else if (p.obtenerOperacion() == TipoOperacion.ACTUALIZAR) {
+                // Registro visual en Journal para Actualizar
+                EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.ACTUALIZAR, archivoDestino, null);
+                if (simularFalloAntesCommit) {
+                    p.establecerEstado(EstadoProceso.BLOQUEADO);
+                    p.establecerMensajeResultado("Fallo simulado. UPDATE quedó PENDIENTE.");
+                    entrada.detalle = "Fallo simulado antes de commit";
+                } else {
+                    confirmarEntradaJournal(entrada, "Commit exitoso UPDATE");
+                }
+                
+            } else if (p.obtenerOperacion() == TipoOperacion.LEER) {
+                // Registro visual en Journal para Lectura (Para que aparezca en el Log)
+                EntradaJournal entrada = registrarEntradaPendiente(TipoOperacion.LEER, archivoDestino, null);
+                confirmarEntradaJournal(entrada, "Commit exitoso READ");
+            }
+
+            liberarLock(archivoDestino, p);
+            desbloquearProcesosEnEspera(archivoDestino);
+            return;
+        }
     }
 
     private boolean asignarBloquesAArchivo(Archivo archivo, int procesoId) {
